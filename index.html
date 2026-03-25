@@ -2042,15 +2042,27 @@ function openEntry(entry) {
   // render any existing tags for this entry
   renderModalTags();
 
-  // Transcript button — show for podcasts, link to parsed URL or fall back to a search
+  // Transcript button — show for podcasts, link to parsed URL or fall back to a targeted search
   const tBtn = document.getElementById('transcriptBtn');
   if (entry.platform === 'podcast') {
-    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent('"' + entry.title + '" transcript')}`;
-    tBtn.href        = entry.transcriptUrl || searchUrl;
-    tBtn.textContent = entry.transcriptUrl ? '📄 Transcript' : '🔍 Find Transcript';
-    tBtn.title       = entry.transcriptUrl
-      ? 'Open episode transcript'
-      : 'Search Google for a transcript of this episode';
+    if (entry.transcriptUrl) {
+      // RSS feed provided a direct transcript link (Podcasting 2.0)
+      tBtn.href        = entry.transcriptUrl;
+      tBtn.textContent = '📄 Transcript';
+      tBtn.title       = 'Open episode transcript (from RSS feed)';
+    } else {
+      // Build the most specific search possible:
+      // "<Show Name>" "<Episode Title>" "<Month Year>" transcript
+      const showName  = person.name ? `"${person.name}"` : '';
+      const epTitle   = `"${entry.title}"`;
+      const epDate    = entry.date
+        ? new Date(entry.date).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+        : '';
+      const query     = [showName, epTitle, epDate, 'transcript'].filter(Boolean).join(' ');
+      tBtn.href        = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+      tBtn.textContent = '🔍 Find Transcript';
+      tBtn.title       = `Search: ${query}`;
+    }
     tBtn.style.display = '';
   } else {
     tBtn.style.display = 'none';
