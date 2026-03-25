@@ -1,0 +1,2113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PersonWatch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=JetBrains+Mono:wght@300;400;500&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0d0d0f;
+    --surface:   #131318;
+    --surface2:  #1a1a22;
+    --border:    #2a2a35;
+    --accent:    #e8c84a;
+    --accent2:   #4a9eff;
+    --text:      #e8e6e0;
+    --muted:     #7a7870;
+    --podcast:   #e8744a;
+    --youtube:   #e84a4a;
+    --twitter:   #4ab8e8;
+    --blog:      #a0e84a;
+    --substack:  #e84aaa;
+    --radius:    6px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Noise texture overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 999;
+    opacity: 0.4;
+  }
+
+  /* ── TOPBAR ── */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 28px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: sticky; top: 0; z-index: 100;
+  }
+
+  .logo {
+    font-family: 'Playfair Display', serif;
+    font-size: 22px; font-weight: 900;
+    letter-spacing: -0.5px;
+    color: var(--text);
+  }
+  .logo span { color: var(--accent); }
+
+  .topbar-meta {
+    display: flex; align-items: center; gap: 20px;
+  }
+  .live-dot {
+    width: 7px; height: 7px;
+    background: #4ae87a;
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity:1; transform:scale(1); }
+    50%      { opacity:0.5; transform:scale(1.4); }
+  }
+  .ts {
+    color: var(--muted); font-size: 11px; letter-spacing: 0.04em;
+  }
+
+  .tab-switcher {
+    display: flex; gap: 2px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 3px;
+  }
+  .tab-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--muted); font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 5px 12px; border-radius: 4px;
+    transition: all 0.15s;
+  }
+  .tab-btn.active {
+    background: var(--surface2);
+    color: var(--accent);
+  }
+  .tab-btn:hover:not(.active) { color: var(--text); }
+
+  /* ── MAIN LAYOUT ── */
+  .main { padding: 24px 28px; }
+
+  /* ── ADD PERSON FORM ── */
+  .add-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    margin-bottom: 24px;
+    display: none;
+  }
+  .add-panel.open { display: block; animation: slideDown 0.2s ease; }
+  @keyframes slideDown {
+    from { opacity:0; transform:translateY(-8px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+
+  .add-panel h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 16px; margin-bottom: 16px;
+    color: var(--accent);
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .form-row {
+    display: flex; flex-direction: column; gap: 5px;
+  }
+  .form-row label {
+    font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted);
+  }
+  .form-row input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    padding: 8px 10px;
+    transition: border-color 0.15s;
+    width: 100%;
+  }
+  .form-row input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .form-row input::placeholder { color: var(--muted); }
+
+  .feed-section-title {
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 10px;
+    border-bottom: 1px solid var(--border); padding-bottom: 6px;
+  }
+
+  .feed-inputs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .feed-row {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .platform-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 4px;
+    font-size: 14px; flex-shrink: 0;
+  }
+
+  .form-actions { display: flex; gap: 10px; justify-content: flex-end; }
+  .btn {
+    border: none; cursor: pointer; border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 8px 18px; transition: all 0.15s;
+  }
+  .btn-primary { background: var(--accent); color: #000; font-weight: 500; }
+  .btn-primary:hover { background: #f5d85a; }
+  .btn-ghost {
+    background: none; border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .btn-ghost:hover { border-color: var(--text); color: var(--text); }
+
+  /* ── TOOLBAR ── */
+  .toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .toolbar-left { display: flex; gap: 8px; align-items: center; }
+
+  .add-person-btn {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--accent); color: #000;
+    border: none; cursor: pointer; border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 8px 14px; font-weight: 500;
+    transition: all 0.15s;
+  }
+  .add-person-btn:hover { background: #f5d85a; }
+
+  .filter-bar {
+    display: flex; gap: 6px;
+  }
+  .filter-chip {
+    background: none; border: 1px solid var(--border);
+    color: var(--muted); cursor: pointer; border-radius: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 4px 12px; transition: all 0.15s;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .filter-chip.active { border-color: var(--accent); color: var(--accent); }
+  .filter-chip:hover:not(.active) { border-color: var(--text); color: var(--text); }
+  .chip-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+  }
+
+  /* ── VIEWS ── */
+  .view { display: none; }
+  .view.active { display: block; animation: fadeIn 0.2s ease; }
+  @keyframes fadeIn {
+    from { opacity: 0; } to { opacity: 1; }
+  }
+
+  /* ── PERSON GRID ── */
+  .persons-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 16px;
+  }
+
+  .person-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: border-color 0.2s, transform 0.2s;
+    animation: cardIn 0.3s ease forwards;
+    opacity: 0;
+  }
+  .person-card:hover {
+    border-color: #3a3a48;
+    transform: translateY(-2px);
+  }
+  @keyframes cardIn {
+    from { opacity:0; transform:translateY(12px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+
+  .card-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+
+  .avatar {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Playfair Display', serif;
+    font-size: 16px; font-weight: 700;
+    color: var(--accent); flex-shrink: 0;
+    overflow: hidden;
+  }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+  .card-person-info { flex: 1; min-width: 0; }
+  .card-person-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 15px; font-weight: 700;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .card-person-desc {
+    font-size: 11px; color: var(--muted); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  .platform-icons {
+    display: flex; gap: 4px;
+  }
+  .picon {
+    width: 22px; height: 22px; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; opacity: 0.7;
+  }
+
+  .card-entries { padding: 4px 0; }
+
+  .entry-row {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid #1f1f28;
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  .entry-row:last-child { border-bottom: none; }
+  .entry-row:hover { background: var(--surface2); }
+
+  .entry-platform-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    flex-shrink: 0; margin-top: 4px;
+  }
+
+  .entry-content { flex: 1; min-width: 0; }
+  .entry-title {
+    font-size: 12px; line-height: 1.5;
+    color: var(--text);
+    display: -webkit-box;
+    -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .entry-meta {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 4px;
+  }
+  .entry-platform-label {
+    font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--muted);
+  }
+  .entry-time {
+    font-size: 10px; color: var(--muted);
+  }
+
+  .new-badge {
+    background: var(--accent); color: #000;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; padding: 1px 5px; border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  .card-footer {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--surface2);
+  }
+  .card-refresh-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--muted); font-size: 14px;
+    transition: color 0.15s, transform 0.3s;
+    padding: 2px;
+  }
+  .card-refresh-btn:hover { color: var(--accent); }
+  .card-refresh-btn.spinning { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .card-last-updated {
+    font-size: 10px; color: var(--muted);
+  }
+  .card-delete-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--muted); font-size: 12px;
+    transition: color 0.15s; padding: 2px 4px;
+  }
+  .card-delete-btn:hover { color: #e84a4a; }
+
+  /* Loading skeleton */
+  .skeleton-entry {
+    padding: 10px 16px;
+    border-bottom: 1px solid #1f1f28;
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .skel {
+    background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 3px;
+  }
+  @keyframes shimmer {
+    from { background-position: 200% 0; }
+    to   { background-position: -200% 0; }
+  }
+  .skel-dot { width:8px; height:8px; border-radius:50%; margin-top:4px; flex-shrink:0; }
+  .skel-lines { flex:1; }
+  .skel-line { height: 11px; margin-bottom: 5px; }
+
+  /* ── TIMELINE VIEW ── */
+  .timeline {
+    max-width: 760px; margin: 0 auto;
+  }
+  .timeline-date-group { margin-bottom: 28px; }
+  .timeline-date-label {
+    font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 10px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  .timeline-item {
+    display: flex; gap: 14px; align-items: flex-start;
+    cursor: pointer;
+    transition: background 0.1s;
+    border-radius: 4px;
+    padding: 10px 12px;
+    margin: 0 -12px;
+  }
+  .timeline-item:hover { background: var(--surface); }
+
+  .tl-platform-bar {
+    width: 3px; align-self: stretch;
+    border-radius: 2px; flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .tl-avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Playfair Display', serif; font-size: 13px; font-weight: 700;
+    color: var(--accent); flex-shrink: 0;
+    overflow: hidden;
+  }
+  .tl-avatar img { width:100%; height:100%; object-fit:cover; }
+
+  .tl-body { flex:1; min-width:0; }
+  .tl-who {
+    font-size: 11px; color: var(--muted); margin-bottom: 3px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .tl-who strong { color: var(--text); font-weight: 400; }
+  .tl-title {
+    font-size: 13px; line-height: 1.5; color: var(--text);
+  }
+  .tl-time {
+    font-size: 10px; color: var(--muted); margin-top: 4px;
+  }
+
+  .tl-new-badge {
+    background: var(--accent); color: #000;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; padding: 2px 6px; border-radius: 3px;
+    flex-shrink: 0; align-self: flex-start; margin-top: 2px;
+  }
+
+  /* ── EMPTY STATE ── */
+  .empty-state {
+    text-align: center; padding: 80px 20px;
+    color: var(--muted);
+  }
+  .empty-state-icon {
+    font-size: 48px; margin-bottom: 16px; opacity: 0.3;
+  }
+  .empty-state h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 22px; color: var(--text);
+    margin-bottom: 8px;
+  }
+  .empty-state p { font-size: 12px; line-height: 1.6; max-width: 320px; margin: 0 auto 20px; }
+
+  /* ── STATUS BAR ── */
+  .statusbar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 6px 28px;
+    display: flex; align-items: center; justify-content: space-between;
+    z-index: 100;
+  }
+  .status-counts {
+    display: flex; gap: 20px;
+  }
+  .stat {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 10px; color: var(--muted);
+  }
+  .stat strong { color: var(--text); }
+  .stat-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+  }
+
+  .refresh-all-btn {
+    background: none; border: 1px solid var(--border);
+    color: var(--muted); cursor: pointer; border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 5px 12px; transition: all 0.15s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .refresh-all-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .refresh-all-btn.spinning svg { animation: spin 1s linear infinite; }
+
+  /* ── MODAL OVERLAY ── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 200;
+    display: none; align-items: center; justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    width: 560px; max-width: 95vw;
+    padding: 28px;
+    animation: modalIn 0.2s ease;
+  }
+  @keyframes modalIn {
+    from { opacity:0; transform:scale(0.95); }
+    to   { opacity:1; transform:scale(1); }
+  }
+  .modal-platform-tag {
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 3px;
+    display: inline-block; margin-bottom: 12px;
+    font-weight: 500;
+  }
+  .modal-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px; font-weight: 700; line-height: 1.35;
+    margin-bottom: 12px;
+  }
+  .modal-meta {
+    font-size: 11px; color: var(--muted); margin-bottom: 16px;
+  }
+  .modal-desc {
+    font-family: 'Libre Baskerville', serif;
+    font-size: 13px; line-height: 1.7; color: #c0bdb8;
+    max-height: 380px; overflow-y: auto;
+    padding-right: 6px;
+  }
+  .modal-desc p { margin: 0 0 10px; }
+  .modal-desc p:last-child { margin-bottom: 0; }
+  .modal-actions {
+    display: flex; gap: 10px; margin-top: 20px;
+  }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3a3a48; }
+
+  .pb-20 { padding-bottom: 48px; }
+
+  /* ── PERSON DETAIL PAGE ── */
+  .person-detail-wrap { max-width: 860px; margin: 0 auto; padding: 28px 24px 60px; }
+
+  .detail-back-btn {
+    display: none; align-items: center; gap: 6px;
+    background: none; border: 1px solid var(--border); border-radius: 4px;
+    color: var(--muted); font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.06em; padding: 5px 12px; cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .detail-back-btn:hover { color: var(--text); border-color: var(--text); }
+  body.view-person .detail-back-btn { display: flex; }
+  body.view-person .tab-switcher    { display: none; }
+  body.view-person .toolbar         { display: none; }
+  body.view-person .tag-filter-row  { display: none; }
+
+  .detail-profile {
+    display: grid; grid-template-columns: 80px 1fr; gap: 20px;
+    padding-bottom: 28px; border-bottom: 1px solid var(--border); margin-bottom: 28px;
+  }
+  .detail-avatar {
+    width: 80px; height: 80px; border-radius: 50%; background: var(--surface2);
+    font-family: 'Playfair Display', serif; font-size: 30px; font-weight: 700;
+    color: var(--accent); display: flex; align-items: center; justify-content: center;
+    overflow: hidden; flex-shrink: 0;
+  }
+  .detail-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+  .detail-fields { display: flex; flex-direction: column; gap: 10px; }
+  .detail-field { display: flex; flex-direction: column; gap: 4px; }
+  .detail-lbl {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+  }
+  .detail-input {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 13px;
+    padding: 8px 10px; box-sizing: border-box; transition: border-color 0.15s;
+  }
+  .detail-input:focus { outline: none; border-color: var(--accent); }
+  .detail-name-input {
+    font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 700;
+    color: var(--text); padding: 4px 0; background: none; border: none;
+    border-bottom: 1px solid var(--border); width: 100%;
+    transition: border-color 0.15s;
+  }
+  .detail-name-input:focus { outline: none; border-bottom-color: var(--accent); }
+
+  .detail-section-title {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+    margin-bottom: 12px;
+  }
+  .detail-feeds { margin-bottom: 28px; }
+  .detail-feed-row {
+    display: grid; grid-template-columns: 100px 1fr; gap: 8px;
+    align-items: center; margin-bottom: 8px;
+  }
+  .detail-feed-lbl {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: var(--muted); display: flex; align-items: center; gap: 5px;
+  }
+  .detail-feed-error { color: #e84a4a; font-size: 10px; margin-left: 4px; }
+  .detail-save-row { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
+  .detail-save-btn {
+    background: var(--accent); color: #111; border: none; border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700;
+    letter-spacing: 0.06em; padding: 9px 22px; cursor: pointer;
+  }
+  .detail-save-btn:hover { filter: brightness(1.1); }
+  .detail-save-msg {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: var(--blog); opacity: 0; transition: opacity 0.3s;
+  }
+  .detail-save-msg.show { opacity: 1; }
+  .detail-delete-btn {
+    background: none; border: 1px solid #e84a4a44; color: #e84a4a88;
+    border-radius: 4px; font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; padding: 9px 16px; cursor: pointer; margin-left: auto;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .detail-delete-btn:hover { color: #e84a4a; border-color: #e84a4a; }
+
+  .detail-entries { border-top: 1px solid var(--border); padding-top: 24px; }
+  .detail-entry-filter { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+  .detail-entry-row {
+    display: flex; align-items: flex-start; gap: 12px; padding: 13px 10px;
+    border-radius: 6px; cursor: pointer; transition: background 0.12s;
+  }
+  .detail-entry-row:hover { background: var(--surface2); }
+  .detail-entry-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 6px; }
+  .detail-entry-body { flex: 1; min-width: 0; }
+  .detail-entry-title {
+    font-family: 'Playfair Display', serif; font-size: 15px;
+    color: var(--text); margin-bottom: 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .detail-entry-meta {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+
+  /* Card header is now a navigation target */
+  .card-header { cursor: pointer; transition: background 0.12s; }
+  .card-header:hover { background: rgba(255,255,255,0.025); }
+
+  /* ── TAGS ── */
+  .tag-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500;
+    letter-spacing: 0.03em; white-space: nowrap; user-select: none;
+    border: none; cursor: pointer; transition: opacity 0.15s;
+  }
+  .tag-chip:hover { opacity: 0.8; }
+  .tag-chip.active { filter: brightness(1.15); }
+  .tag-remove {
+    background: none; border: none; cursor: pointer;
+    color: inherit; font-size: 12px; line-height: 1; padding: 0;
+    opacity: 0.6; margin-left: 1px;
+  }
+  .tag-remove:hover { opacity: 1; }
+
+  .person-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+
+  .tag-filter-row {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    padding: 8px 24px 12px;
+  }
+  .tag-filter-row:empty { padding: 0; }
+  .tag-filter-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--muted); align-self: center; margin-right: 2px;
+  }
+
+  .tag-input-wrap {
+    display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    padding: 5px 8px; min-height: 36px; cursor: text;
+    transition: border-color 0.15s;
+  }
+  .tag-input-wrap:focus-within { border-color: var(--accent); }
+  .tag-input-wrap input {
+    border: none; background: transparent; color: var(--text);
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    outline: none; flex: 1; min-width: 80px; padding: 0;
+  }
+  .tag-input-wrap input::placeholder { color: var(--muted); }
+
+  .tag-edit-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--muted); font-size: 12px; padding: 1px 3px; line-height: 1;
+    opacity: 0.35; transition: opacity 0.15s, color 0.15s; border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .tag-edit-btn:hover { opacity: 1; color: var(--accent); }
+  .inline-tag-editor {
+    padding: 10px 14px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+
+  [data-tip] { position: relative; }
+  [data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+    background: #2a2a35; color: var(--text);
+    font-size: 10px; padding: 4px 8px; border-radius: 3px;
+    white-space: nowrap; margin-bottom: 4px;
+    pointer-events: none; z-index: 50;
+  }
+
+  /* ── AUTO-DISCOVER ── */
+  .search-name-row { display: flex; gap: 8px; }
+  .search-name-row input { flex: 1; }
+  .btn-search {
+    background: none; border: 1px solid var(--border);
+    color: var(--muted); cursor: pointer; border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 0 14px; white-space: nowrap; transition: all 0.15s; flex-shrink: 0;
+  }
+  .btn-search:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .btn-search:disabled { opacity: 0.45; cursor: default; }
+
+  #suggestArea { margin: 8px 0 4px; }
+  .suggest-status {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: var(--muted); padding: 8px 0; text-align: center;
+  }
+  .suggest-list { display: flex; flex-direction: column; gap: 6px; }
+  .suggest-card {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px;
+    cursor: pointer; transition: border-color 0.15s;
+  }
+  .suggest-card:hover { border-color: var(--accent); }
+  .suggest-card.applied { border-color: var(--accent); background: rgba(232,200,74,0.05); }
+  .suggest-art {
+    width: 42px; height: 42px; border-radius: 5px; object-fit: cover; flex-shrink: 0;
+  }
+  .suggest-art-ph {
+    width: 42px; height: 42px; border-radius: 5px; background: var(--surface2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+  }
+  .suggest-info { flex: 1; min-width: 0; }
+  .suggest-name {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500;
+    color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .suggest-sub {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted);
+    margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .suggest-tags { display: flex; gap: 4px; margin-top: 4px; }
+  .stag {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 500;
+    padding: 1px 6px; border-radius: 3px; letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .stag.podcast { background: rgba(232,116,74,0.2); color: var(--podcast); }
+  .stag.youtube { background: rgba(232,74,74,0.2);  color: var(--youtube); }
+  .stag.blog    { background: rgba(160,232,74,0.2); color: var(--blog); }
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <div class="logo">Person<span>Watch</span></div>
+  <button class="detail-back-btn" id="backBtn" onclick="backToPeople()">← People</button>
+  <div class="topbar-meta">
+    <div class="live-dot" data-tip="Live updates on"></div>
+    <span class="ts" id="clock">--:--:--</span>
+  </div>
+  <div class="tab-switcher">
+    <button class="tab-btn active" onclick="switchView('people')" id="tab-people">People</button>
+    <button class="tab-btn" onclick="switchView('timeline')" id="tab-timeline">Timeline</button>
+  </div>
+</header>
+
+<!-- MAIN -->
+<main class="main pb-20">
+
+  <!-- ADD PERSON PANEL -->
+  <div class="add-panel" id="addPanel">
+    <h3>+ Track a New Person</h3>
+
+    <!-- Step 1: search by name -->
+    <div class="form-row" style="margin-bottom:8px">
+      <label>Name *</label>
+      <div class="search-name-row">
+        <input type="text" id="f-name" placeholder="e.g. Michael Pollan — press Search to auto-fill"
+               onkeydown="if(event.key==='Enter')searchPersonByName()">
+        <button class="btn-search" id="searchBtn" onclick="searchPersonByName()">🔍 Search</button>
+      </div>
+    </div>
+
+    <!-- Search results -->
+    <div id="suggestArea"></div>
+
+    <!-- Step 2: review / fill remaining fields -->
+    <div class="form-grid">
+      <div class="form-row">
+        <label>Description</label>
+        <input type="text" id="f-desc" placeholder="e.g. Author, food journalist">
+      </div>
+      <div class="form-row">
+        <label>Avatar URL (optional)</label>
+        <input type="text" id="f-avatar" placeholder="https://...">
+      </div>
+    </div>
+
+    <!-- Tags input -->
+    <div class="form-row" style="margin-bottom:12px">
+      <label>Topics / Tags <span style="color:var(--muted);font-weight:400">(Enter or comma to add)</span></label>
+      <div class="tag-input-wrap" id="tagInputWrap" onclick="document.getElementById('f-tag-input').focus()">
+        <div id="tagChipsContainer" style="display:contents"></div>
+        <input id="f-tag-input" type="text" placeholder="e.g. consciousness, biology…"
+               onkeydown="handleTagKeydown(event)">
+      </div>
+    </div>
+
+    <div class="feed-section-title">Feed URLs — paste any you have (leave blank to skip)</div>
+    <div class="feed-inputs">
+      <div class="feed-row">
+        <div class="platform-badge" style="background:#2a1a10; font-size:16px;">🎙</div>
+        <div class="form-row" style="flex:1">
+          <label>Podcast RSS</label>
+          <input type="text" id="f-podcast" placeholder="https://feeds.example.com/...">
+        </div>
+      </div>
+      <div class="feed-row">
+        <div class="platform-badge" style="background:#1a0f0f; font-size:16px;">▶️</div>
+        <div class="form-row" style="flex:1">
+          <label>YouTube Channel ID</label>
+          <input type="text" id="f-youtube" placeholder="UCxxxxxxxxxxxxxxxx">
+        </div>
+      </div>
+      <div class="feed-row">
+        <div class="platform-badge" style="background:#0f1e2a; font-size:16px;">𝕏</div>
+        <div class="form-row" style="flex:1">
+          <label>X / Twitter RSS (via rss.app)</label>
+          <input type="text" id="f-twitter" placeholder="https://rss.app/feeds/...">
+        </div>
+      </div>
+      <div class="feed-row">
+        <div class="platform-badge" style="background:#162010; font-size:16px;">✍️</div>
+        <div class="form-row" style="flex:1">
+          <label>Blog / Substack RSS</label>
+          <input type="text" id="f-blog" placeholder="https://example.substack.com/feed">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="toggleAddPanel()">Cancel</button>
+      <button class="btn btn-primary" onclick="addPerson()">Add Person</button>
+    </div>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <button class="add-person-btn" onclick="toggleAddPanel()">
+        <span>+</span> Add Person
+      </button>
+      <div class="filter-bar" id="filterBar">
+        <button class="filter-chip active" data-filter="all" onclick="setFilter('all')">All</button>
+        <button class="filter-chip" data-filter="podcast" onclick="setFilter('podcast')">
+          <span class="chip-dot" style="background:var(--podcast)"></span>Podcast
+        </button>
+        <button class="filter-chip" data-filter="youtube" onclick="setFilter('youtube')">
+          <span class="chip-dot" style="background:var(--youtube)"></span>YouTube
+        </button>
+        <button class="filter-chip" data-filter="twitter" onclick="setFilter('twitter')">
+          <span class="chip-dot" style="background:var(--twitter)"></span>X
+        </button>
+        <button class="filter-chip" data-filter="blog" onclick="setFilter('blog')">
+          <span class="chip-dot" style="background:var(--blog)"></span>Blog
+        </button>
+      </div>
+    </div>
+  </div>
+  <!-- Tag filter row — rendered dynamically when tags exist -->
+  <div class="tag-filter-row" id="tagFilterRow"></div>
+
+  <!-- PEOPLE VIEW -->
+  <div class="view active" id="view-people">
+    <div class="persons-grid" id="personsGrid"></div>
+    <div class="empty-state" id="emptyState" style="display:none">
+      <div class="empty-state-icon">👁</div>
+      <h2>Nobody here yet</h2>
+      <p>Add people you want to follow and their feeds. PersonWatch checks all platforms and shows you what's new.</p>
+      <button class="add-person-btn" onclick="toggleAddPanel()" style="margin:0 auto">+ Add your first person</button>
+    </div>
+  </div>
+
+  <!-- TIMELINE VIEW -->
+  <div class="view" id="view-timeline">
+    <div class="timeline" id="timelineContainer"></div>
+    <div class="empty-state" id="tlEmptyState" style="display:none">
+      <div class="empty-state-icon">📡</div>
+      <h2>No activity yet</h2>
+      <p>Add people with feed URLs and hit Refresh All to start fetching content.</p>
+    </div>
+  </div>
+
+  <!-- PERSON DETAIL VIEW -->
+  <div class="view" id="view-person">
+    <div class="person-detail-wrap" id="personDetailContent"></div>
+  </div>
+
+</main>
+
+<!-- STATUS BAR -->
+<div class="statusbar">
+  <div class="status-counts" id="statusCounts">
+    <div class="stat"><strong id="statPeople">0</strong> people</div>
+    <div class="stat">
+      <span class="stat-dot" style="background:var(--accent)"></span>
+      <strong id="statNew">0</strong> new items
+    </div>
+  </div>
+  <button class="refresh-all-btn" id="refreshAllBtn" onclick="refreshAll()">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <polyline points="23 4 23 10 17 10"></polyline>
+      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+    </svg>
+    Refresh All
+  </button>
+</div>
+
+<!-- ENTRY DETAIL MODAL -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+  <div class="modal" id="modal">
+    <div id="modalContent"></div>
+    <div class="modal-actions">
+      <a id="transcriptBtn" href="#" target="_blank" rel="noopener" class="btn btn-ghost" style="display:none">📄 Transcript</a>
+      <a id="modalLink" href="#" target="_blank" rel="noopener" class="btn btn-primary">Open →</a>
+      <button class="btn btn-ghost" onclick="closeModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── PLATFORM CONFIG ──
+const PLATFORMS = {
+  podcast: { label: 'Podcast', color: 'var(--podcast)', emoji: '🎙' },
+  youtube: { label: 'YouTube', color: 'var(--youtube)', emoji: '▶' },
+  twitter: { label: 'X',       color: 'var(--twitter)', emoji: '𝕏' },
+  blog:    { label: 'Blog',    color: 'var(--blog)',    emoji: '✍' },
+};
+
+// ── CORS PROXIES ──
+// Primary: corsproxy.io (returns raw content). Fallback: allorigins.win /raw (also raw content).
+const CORS_PRIMARY  = 'https://corsproxy.io/?';
+const CORS_FALLBACK = 'https://api.allorigins.win/raw?url=';
+
+// ── STATE ──
+let persons      = [];
+let allEntries    = [];
+let currentFilter = 'all';
+let currentView   = 'people';
+let activeTag     = null;
+let _formTags     = [];
+let entryTags     = {};   // { entryId: string[] } — persisted separately so tags survive re-fetches
+let _currentModalEntry = null;
+
+// ── TAG COLORS ──
+const TAG_PALETTE = ['#7c6fcd','#4ab8e8','#a0e84a','#e8744a','#e84a98','#4ae8b8','#e8c84a','#c87c4a'];
+function tagColor(tag) {
+  let h = 5381;
+  for (const c of String(tag).toLowerCase()) h = (((h << 5) + h) ^ c.charCodeAt(0)) >>> 0;
+  return TAG_PALETTE[h % TAG_PALETTE.length];
+}
+
+// ── TAG FORM INPUT ──
+function handleTagKeydown(e) {
+  const input = document.getElementById('f-tag-input');
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    const val = input.value.replace(/,/g,'').trim().toLowerCase();
+    if (val && !_formTags.includes(val)) { _formTags.push(val); renderFormTagChips(); }
+    input.value = '';
+  } else if (e.key === 'Backspace' && !input.value && _formTags.length) {
+    _formTags.pop(); renderFormTagChips();
+  }
+}
+function removeFormTag(tag) { _formTags = _formTags.filter(t => t !== tag); renderFormTagChips(); }
+function renderFormTagChips() {
+  document.getElementById('tagChipsContainer').innerHTML = _formTags.map(t => {
+    const c = tagColor(t);
+    return `<span class="tag-chip" style="background:${c}22;color:${c}">${escHtml(t)
+      }<button class="tag-remove" onclick="removeFormTag('${escHtml(t)}')" type="button">×</button></span>`;
+  }).join('');
+}
+
+// ── TAG FILTER BAR ──
+function renderTagFilterRow() {
+  const row = document.getElementById('tagFilterRow');
+  const allTags = [...new Set([
+    ...persons.flatMap(p => p.tags || []),
+    ...Object.values(entryTags).flat()
+  ])].sort();
+  if (allTags.length === 0) { row.innerHTML = ''; return; }
+  row.innerHTML = '<span class="tag-filter-label">Topics:</span>' + allTags.map(tag => {
+    const c  = tagColor(tag);
+    const on = activeTag === tag;
+    return `<button class="tag-chip${on?' active':''}"
+      style="background:${on ? c : c+'22'};color:${on ? '#111' : c}"
+      onclick="setTagFilter('${escHtml(tag)}')">${escHtml(tag)}</button>`;
+  }).join('');
+}
+function setTagFilter(tag) {
+  activeTag = (activeTag === tag) ? null : tag;
+  renderTagFilterRow();
+  renderAllCards();
+  if (currentView === 'timeline') renderTimeline();
+}
+
+// ── INLINE TAG EDITOR (per card) ──
+const _editTagState = {};
+
+function openTagEditor(personId) {
+  const existing = document.getElementById('tag-editor-' + personId);
+  if (existing) { existing.remove(); delete _editTagState[personId]; return; }
+  const person = persons.find(p => p.id === personId);
+  if (!person) return;
+  _editTagState[personId] = [...(person.tags || [])];
+
+  const card   = document.getElementById('card-' + personId);
+  const header = card?.querySelector('.card-header');
+  if (!header) return;
+
+  const div = document.createElement('div');
+  div.id        = 'tag-editor-' + personId;
+  div.className = 'inline-tag-editor';
+  div.innerHTML = `
+    <div class="tag-input-wrap" style="margin-bottom:8px" onclick="document.getElementById('tei-${personId}').focus()">
+      <div id="tec-${personId}" style="display:contents"></div>
+      <input id="tei-${personId}" type="text" placeholder="Type topic, press Enter or comma…"
+             onkeydown="handleTagEditorKeydown(event,'${personId}')">
+    </div>
+    <div style="display:flex;gap:6px">
+      <button onclick="saveTagEdit('${personId}')"
+        style="flex:1;padding:5px 10px;background:var(--accent);color:#111;border:none;border-radius:4px;font-family:JetBrains Mono,monospace;font-size:11px;font-weight:600;cursor:pointer">Save</button>
+      <button onclick="cancelTagEdit('${personId}')"
+        style="padding:5px 10px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:4px;font-family:JetBrains Mono,monospace;font-size:11px;cursor:pointer">Cancel</button>
+    </div>`;
+  header.after(div);
+  refreshEditChips(personId);
+  document.getElementById('tei-' + personId)?.focus();
+}
+
+function refreshEditChips(personId) {
+  const container = document.getElementById('tec-' + personId);
+  if (!container) return;
+  container.innerHTML = (_editTagState[personId] || []).map(t => {
+    const c = tagColor(t);
+    return `<span class="tag-chip" style="background:${c}22;color:${c}">${escHtml(t)
+      }<button class="tag-remove" type="button" onclick="removeEditTag('${personId}','${escHtml(t)}')">×</button></span>`;
+  }).join('');
+}
+
+function removeEditTag(personId, tag) {
+  _editTagState[personId] = (_editTagState[personId] || []).filter(t => t !== tag);
+  refreshEditChips(personId);
+}
+
+function handleTagEditorKeydown(e, personId) {
+  const input = document.getElementById('tei-' + personId);
+  if (e.key === 'Escape') { cancelTagEdit(personId); return; }
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    const val = input.value.replace(/,/g,'').trim().toLowerCase();
+    if (val && !(_editTagState[personId]||[]).includes(val)) {
+      (_editTagState[personId] = _editTagState[personId] || []).push(val);
+      refreshEditChips(personId);
+    }
+    input.value = '';
+  } else if (e.key === 'Backspace' && !input.value && _editTagState[personId]?.length) {
+    _editTagState[personId].pop();
+    refreshEditChips(personId);
+  }
+}
+
+function saveTagEdit(personId) {
+  const person = persons.find(p => p.id === personId);
+  if (!person) return;
+  const input = document.getElementById('tei-' + personId);
+  if (input?.value.trim()) {
+    const val = input.value.trim().toLowerCase();
+    if (!(_editTagState[personId] || []).includes(val))
+      (_editTagState[personId] = _editTagState[personId] || []).push(val);
+  }
+  person.tags = [...(_editTagState[personId] || [])];
+  delete _editTagState[personId];
+  saveState();
+  renderTagFilterRow();
+  renderPersonCard(person, false);
+}
+
+function cancelTagEdit(personId) {
+  delete _editTagState[personId];
+  document.getElementById('tag-editor-' + personId)?.remove();
+}
+
+// ── ENTRY-LEVEL TAGS (modal) ──
+function renderModalTags() {
+  const container = document.getElementById('met-chips');
+  if (!container || !_currentModalEntry) return;
+  const tags = entryTags[_currentModalEntry.id] || [];
+  container.innerHTML = tags.map(t => {
+    const c = tagColor(t);
+    return `<span class="tag-chip" style="background:${c}22;color:${c}">${escHtml(t)
+      }<button class="tag-remove" type="button"
+        onclick="removeEntryTag('${escHtml(_currentModalEntry.id)}','${escHtml(t)}')">×</button></span>`;
+  }).join('');
+}
+
+function handleModalTagKeydown(e) {
+  const input = document.getElementById('met-input');
+  if (e.key === 'Escape') { input.value = ''; return; }
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    const val = input.value.replace(/,/g,'').trim().toLowerCase();
+    if (val && _currentModalEntry) {
+      const id = _currentModalEntry.id;
+      if (!entryTags[id]) entryTags[id] = [];
+      if (!entryTags[id].includes(val)) { entryTags[id].push(val); saveState(); renderModalTags(); renderTagFilterRow(); }
+    }
+    input.value = '';
+  } else if (e.key === 'Backspace' && !input.value && _currentModalEntry) {
+    const id = _currentModalEntry.id;
+    if (entryTags[id]?.length) { entryTags[id].pop(); saveState(); renderModalTags(); renderTagFilterRow(); }
+  }
+}
+
+function removeEntryTag(entryId, tag) {
+  entryTags[entryId] = (entryTags[entryId] || []).filter(t => t !== tag);
+  if (!entryTags[entryId].length) delete entryTags[entryId];
+  saveState(); renderModalTags(); renderTagFilterRow();
+}
+let seenIds      = new Set();
+
+// ── DEMO SEED DATA ──
+// Pre-populated with three example people. Remove or replace on first run.
+const DEMO_PERSONS = [
+  {
+    id: 'joe-rogan',
+    name: 'Joe Rogan',
+    desc: 'Podcast host, comedian',
+    avatar: '',
+    feeds: {
+      podcast: 'https://feeds.simplecast.com/dHoohVNH',
+      youtube: 'UCzWQYUVCpZqtN93H8RR44Qw',
+      twitter: '',
+      blog: ''
+    },
+    entries: [], lastUpdated: null, loading: false,
+    tags: ['comedy', 'mma', 'psychedelics']
+  },
+  {
+    id: 'michael-levin',
+    name: 'Michael Levin',
+    desc: 'Biologist, Tufts University',
+    avatar: '',
+    feeds: {
+      podcast: '',
+      youtube: 'UC4L7_tFSMxUWbL6UsCasQqA',
+      twitter: '',
+      blog: ''
+    },
+    entries: [], lastUpdated: null, loading: false,
+    tags: ['biology', 'consciousness', 'science']
+  },
+  {
+    id: 'lex-fridman',
+    name: 'Lex Fridman',
+    desc: 'AI researcher, podcaster',
+    avatar: '',
+    feeds: {
+      podcast: 'https://lexfridman.com/feed/podcast/',
+      youtube: 'UCSHZKyawb77ixDdsGog4iWA',
+      twitter: '',
+      blog: ''
+    },
+    entries: [], lastUpdated: null, loading: false,
+    tags: ['ai', 'technology', 'consciousness']
+  }
+];
+
+// ── STORAGE ──
+function saveState() {
+  try {
+    localStorage.setItem('pw-persons',    JSON.stringify(persons.map(p => ({ ...p, loading: false }))));
+    localStorage.setItem('pw-seen',       JSON.stringify([...seenIds]));
+    localStorage.setItem('pw-entry-tags', JSON.stringify(entryTags));
+  } catch(e) {}
+}
+
+function loadState() {
+  try {
+    const saved = localStorage.getItem('pw-persons');
+    persons = saved ? JSON.parse(saved) : DEMO_PERSONS;
+    // Migrate: ensure every person has required fields,
+    // and backfill tags from DEMO_PERSONS for any demo person that has none yet
+    const demoTagMap = Object.fromEntries(DEMO_PERSONS.map(p => [p.id, p.tags || []]));
+    persons = persons.map(p => {
+      const base = { tags: [], fetchErrors: [], ...p };
+      if (base.tags.length === 0 && demoTagMap[p.id]?.length) base.tags = demoTagMap[p.id];
+      return base;
+    });
+    const savedSeen = localStorage.getItem('pw-seen');
+    if (savedSeen) seenIds = new Set(JSON.parse(savedSeen));
+    const savedET = localStorage.getItem('pw-entry-tags');
+    if (savedET) entryTags = JSON.parse(savedET);
+  } catch(e) {
+    persons = DEMO_PERSONS;
+  }
+}
+
+// ── CLOCK ──
+function updateClock() {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('en-GB', { hour12: false });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── VIEW SWITCHING ──
+function switchView(v) {
+  currentView = v;
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.getElementById('view-' + v).classList.add('active');
+  // Tab buttons only apply to people/timeline
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  if (v === 'people' || v === 'timeline') document.getElementById('tab-' + v)?.classList.add('active');
+  // Body class drives CSS visibility of back btn, toolbar, tag row, tabs
+  document.body.classList.toggle('view-person', v === 'person');
+  if (v === 'timeline') renderTimeline();
+  if (v === 'people')   renderAllCards();
+}
+
+// ── PERSON DETAIL PAGE ──
+let currentPerson  = null;
+let _detailFilter  = 'all';
+let _detailFormTags = [];
+
+function backToPeople() {
+  currentPerson = null;
+  switchView('people');
+}
+
+function openPersonDetail(personId) {
+  const person = persons.find(p => p.id === personId);
+  if (!person) return;
+  currentPerson   = person;
+  _detailFilter   = 'all';
+  _detailFormTags = [...(person.tags || [])];
+  renderPersonDetail();
+  switchView('person');
+}
+
+function renderPersonDetail() {
+  const person = currentPerson;
+  if (!person) return;
+  const wrap = document.getElementById('personDetailContent');
+
+  const avatarHtml = person.avatar
+    ? `<img src="${escHtml(person.avatar)}" onerror="this.parentElement.innerHTML='${getInitials(person.name)}'"/>`
+    : getInitials(person.name);
+
+  const failedFeeds = person.fetchErrors || [];
+
+  const feedRows = [
+    { key: 'podcast', label: '🎙 Podcast',  ph: 'RSS feed URL',         hint: '' },
+    { key: 'youtube', label: '▶ YouTube',   ph: 'Channel ID (UC…)',      hint: '' },
+    { key: 'twitter', label: '🐦 X / Twitter', ph: 'rss.app RSS URL',   hint: '' },
+    { key: 'blog',    label: '✍ Blog',      ph: 'RSS or Atom feed URL',  hint: '' },
+  ].map(f => {
+    const failed = failedFeeds.includes(f.key)
+      ? `<span class="detail-feed-error" data-tip="Last fetch failed">⚠</span>` : '';
+    return `
+      <div class="detail-feed-row">
+        <label class="detail-feed-lbl" for="df-${f.key}">${f.label}${failed}</label>
+        <input class="detail-input" id="df-${f.key}" type="text"
+               value="${escHtml(person.feeds[f.key] || '')}" placeholder="${f.ph}">
+      </div>`;
+  }).join('');
+
+  // Entry list with current detail filter
+  let entries = [...(person.entries || [])];
+  if (_detailFilter !== 'all') entries = entries.filter(e => e.platform === _detailFilter);
+  entries.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const filterBtns = ['all', 'podcast', 'youtube', 'twitter', 'blog'].map(f => {
+    if (f !== 'all' && !person.feeds[f]) return '';
+    const active = _detailFilter === f;
+    const pl = f === 'all' ? null : PLATFORMS[f];
+    const dot = pl ? `<span style="width:7px;height:7px;border-radius:50%;background:${pl.color};display:inline-block;margin-right:4px"></span>` : '';
+    return `<button class="filter-chip${active?' active':''}" onclick="setDetailFilter('${f}')">${dot}${f==='all'?'All':pl.label}</button>`;
+  }).join('');
+
+  const entryListHtml = entries.length === 0
+    ? `<div style="padding:24px 0;color:var(--muted);font-size:12px;text-align:center">No entries — click Refresh to fetch</div>`
+    : entries.map(entry => {
+        const pl   = PLATFORMS[entry.platform];
+        const eTags = (entryTags[entry.id] || []).map(t => {
+          const c = tagColor(t);
+          return `<span class="tag-chip" style="background:${c}22;color:${c};font-size:9px;padding:1px 5px">${escHtml(t)}</span>`;
+        }).join('');
+        const isNew = !seenIds.has(entry.id);
+        return `
+          <div class="detail-entry-row" onclick="openEntry(${JSON.stringify(entry).replace(/"/g,'&quot;')})">
+            <div class="detail-entry-dot" style="background:${pl.color}"></div>
+            <div class="detail-entry-body">
+              <div class="detail-entry-title">${escHtml(entry.title)}${isNew?'<span class="new-badge" style="margin-left:8px;vertical-align:middle">NEW</span>':''}</div>
+              <div class="detail-entry-meta">
+                <span>${pl.emoji} ${pl.label}</span>
+                <span>${timeAgo(entry.date)}</span>
+                ${eTags}
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+
+  wrap.innerHTML = `
+    <!-- Profile -->
+    <div class="detail-profile">
+      <div class="detail-avatar" id="detail-avatar-el">${avatarHtml}</div>
+      <div class="detail-fields">
+        <input class="detail-name-input" id="df-name" value="${escHtml(person.name)}" placeholder="Name">
+        <div class="detail-field">
+          <div class="detail-lbl">Description</div>
+          <input class="detail-input" id="df-desc" value="${escHtml(person.desc||'')}" placeholder="Short description…">
+        </div>
+        <div class="detail-field">
+          <div class="detail-lbl">Avatar URL</div>
+          <input class="detail-input" id="df-avatar" value="${escHtml(person.avatar||'')}" placeholder="https://…"
+                 oninput="previewDetailAvatar(this.value)">
+        </div>
+        <div class="detail-field">
+          <div class="detail-lbl">Topics / Tags <span style="color:var(--muted);font-weight:400;font-size:9px">(Enter or comma)</span></div>
+          <div class="tag-input-wrap" onclick="document.getElementById('df-tag-input').focus()">
+            <div id="detailTagChips" style="display:contents"></div>
+            <input id="df-tag-input" type="text" placeholder="Add topic…" onkeydown="handleDetailTagKeydown(event)">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Feeds -->
+    <div class="detail-feeds">
+      <div class="detail-section-title">Feed URLs</div>
+      ${feedRows}
+      <div class="detail-save-row">
+        <button class="detail-save-btn" onclick="savePersonDetail()">Save Changes</button>
+        <span class="detail-save-msg" id="detail-save-msg">Saved</span>
+        <button class="detail-delete-btn" onclick="deletePersonFromDetail()">Delete Person</button>
+      </div>
+    </div>
+
+    <!-- Entries -->
+    <div class="detail-entries">
+      <div class="detail-section-title">
+        Content
+        <span style="color:var(--muted);font-weight:400;margin-left:6px">(${person.entries?.length || 0} entries)</span>
+        <button class="card-refresh-btn" style="margin-left:10px" id="detail-refresh-btn"
+          onclick="refreshDetailPerson()" data-tip="Refresh feeds">↻</button>
+      </div>
+      <div class="detail-entry-filter">${filterBtns}</div>
+      <div id="detail-entry-list">${entryListHtml}</div>
+    </div>`;
+
+  renderDetailTagChips();
+}
+
+function previewDetailAvatar(url) {
+  const el = document.getElementById('detail-avatar-el');
+  if (!el) return;
+  el.innerHTML = url
+    ? `<img src="${escHtml(url)}" onerror="this.parentElement.innerHTML='${getInitials(document.getElementById('df-name')?.value||'')}'">`
+    : getInitials(document.getElementById('df-name')?.value || '');
+}
+
+function setDetailFilter(f) {
+  _detailFilter = f;
+  renderPersonDetail();
+}
+
+function handleDetailTagKeydown(e) {
+  const input = document.getElementById('df-tag-input');
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    const val = input.value.replace(/,/g,'').trim().toLowerCase();
+    if (val && !_detailFormTags.includes(val)) { _detailFormTags.push(val); renderDetailTagChips(); }
+    input.value = '';
+  } else if (e.key === 'Backspace' && !input.value && _detailFormTags.length) {
+    _detailFormTags.pop(); renderDetailTagChips();
+  }
+}
+
+function removeDetailTag(tag) { _detailFormTags = _detailFormTags.filter(t => t !== tag); renderDetailTagChips(); }
+
+function renderDetailTagChips() {
+  const c = document.getElementById('detailTagChips');
+  if (!c) return;
+  c.innerHTML = _detailFormTags.map(t => {
+    const col = tagColor(t);
+    return `<span class="tag-chip" style="background:${col}22;color:${col}">${escHtml(t)
+      }<button class="tag-remove" type="button" onclick="removeDetailTag('${escHtml(t)}')">×</button></span>`;
+  }).join('');
+}
+
+function savePersonDetail() {
+  if (!currentPerson) return;
+  const p = currentPerson;
+  p.name   = document.getElementById('df-name')?.value.trim()   || p.name;
+  p.desc   = document.getElementById('df-desc')?.value.trim()   || '';
+  p.avatar = document.getElementById('df-avatar')?.value.trim() || '';
+  p.tags   = [..._detailFormTags];
+  p.feeds.podcast = document.getElementById('df-podcast')?.value.trim() || '';
+  p.feeds.blog    = document.getElementById('df-blog')?.value.trim()    || '';
+  p.feeds.twitter = document.getElementById('df-twitter')?.value.trim() || '';
+  // YouTube: accept full URL or bare channel ID
+  const ytRaw = document.getElementById('df-youtube')?.value.trim() || '';
+  const ytMatch = ytRaw.match(/channel_id=([^&]+)/) || ytRaw.match(/\/channel\/(UC[^/?]+)/);
+  p.feeds.youtube = ytMatch ? ytMatch[1] : ytRaw;
+  saveState();
+  renderTagFilterRow();
+  const msg = document.getElementById('detail-save-msg');
+  if (msg) { msg.classList.add('show'); setTimeout(() => msg.classList.remove('show'), 2000); }
+}
+
+async function refreshDetailPerson() {
+  if (!currentPerson) return;
+  const btn = document.getElementById('detail-refresh-btn');
+  if (btn) btn.classList.add('spinning');
+  await fetchPerson(currentPerson);
+  renderPersonDetail();
+  if (btn) btn.classList.remove('spinning');
+}
+
+function deletePersonFromDetail() {
+  if (!currentPerson) return;
+  if (!confirm(`Remove ${currentPerson.name}?`)) return;
+  deletePerson(currentPerson.id);
+  backToPeople();
+}
+
+// ── ADD PANEL ──
+function toggleAddPanel() {
+  const panel = document.getElementById('addPanel');
+  panel.classList.toggle('open');
+  if (panel.classList.contains('open')) {
+    document.getElementById('suggestArea').innerHTML = '';
+    _suggestions = [];
+    _formTags = []; renderFormTagChips();
+    document.getElementById('f-name').focus();
+  }
+}
+
+// ── AUTO-DISCOVER BY NAME ──
+let _suggestions = [];
+
+// ── helpers ──
+
+async function _fetchHtml(url) {
+  let html = null;
+  try { const r = await fetch(url, { signal: AbortSignal.timeout(5000) }); if (r.ok) html = await r.text(); } catch(e) {}
+  if (!html) {
+    try { const r = await fetch(CORS_PRIMARY + encodeURIComponent(url), { signal: AbortSignal.timeout(8000) }); if (r.ok) html = await r.text(); } catch(e) {}
+  }
+  return html;
+}
+
+async function _findYouTube(name) {
+  const slugs = [name.toLowerCase().replace(/\s+/g,''), name.toLowerCase().replace(/\s+/g,'-')];
+  for (const slug of slugs) {
+    const html = await _fetchHtml(`https://www.youtube.com/@${slug}`);
+    if (html) {
+      const m = html.match(/"channelId":"(UC[a-zA-Z0-9_-]{22})"/);
+      if (m) return m[1];
+    }
+  }
+  return null;
+}
+
+async function _findBlog(name) {
+  const s1 = name.toLowerCase().replace(/\s+/g,'-');
+  const s2 = name.toLowerCase().replace(/\s+/g,'');
+  const candidates = [
+    `https://${s1}.substack.com/feed`,
+    `https://${s2}.substack.com/feed`,
+    `https://${s1}.com/feed`,
+    `https://${s2}.com/feed`,
+    `https://www.${s1}.com/feed`,
+  ];
+  // Try all candidates in parallel — return the first valid RSS URL
+  const checks = candidates.map(async url => {
+    let text = null;
+    try { const r = await fetch(url, { signal: AbortSignal.timeout(4000) }); if (r.ok) text = await r.text(); } catch(e) {}
+    if (!text) { try { const r = await fetch(CORS_PRIMARY + encodeURIComponent(url), { signal: AbortSignal.timeout(5000) }); if (r.ok) text = await r.text(); } catch(e) {} }
+    if (text && (text.includes('<rss') || text.includes('<feed') || text.includes('<?xml'))) return url;
+    return null;
+  });
+  const results = await Promise.all(checks);
+  return results.find(r => r !== null) ?? null;
+}
+
+// How well does a suggestion name match the query? (0 = no match, 3 = exact)
+function _nameScore(query, suggName) {
+  const q = query.toLowerCase().trim();
+  const n = suggName.toLowerCase().trim();
+  if (n === q) return 3;
+  if (n.startsWith(q) || q.startsWith(n)) return 2;
+  const qWords = q.split(/\s+/);
+  if (qWords.length > 1 && qWords.every(w => n.includes(w))) return 2;
+  if (n.includes(q) || q.includes(n)) return 1;
+  return 0;
+}
+
+async function searchPersonByName() {
+  const query = document.getElementById('f-name').value.trim();
+  if (!query) { document.getElementById('f-name').focus(); return; }
+
+  const btn  = document.getElementById('searchBtn');
+  const area = document.getElementById('suggestArea');
+  btn.disabled = true; btn.textContent = 'Searching…';
+  area.innerHTML = '<div class="suggest-status">Searching podcasts, YouTube, blogs…</div>';
+  _suggestions = [];
+
+  // ── Run all three sources in parallel ──
+  const [itunesData, ytId, blogUrl] = await Promise.all([
+    // iTunes podcasts
+    fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=podcast&entity=podcast&limit=6`,
+      { signal: AbortSignal.timeout(8000) })
+      .then(r => r.json()).catch(() => ({ results: [] })),
+    // YouTube handle
+    _findYouTube(query),
+    // Blog / Substack
+    _findBlog(query),
+  ]);
+
+  itunesData.results.forEach(r => {
+    if (!r.feedUrl) return;
+    const art = (r.artworkUrl600 || r.artworkUrl100 || '').replace('100x100bb', '600x600bb');
+    _suggestions.push({
+      name:        r.artistName || r.collectionName,
+      desc:        r.primaryGenreName || '',
+      avatar:      art,
+      podcastUrl:  r.feedUrl,
+      podcastName: r.collectionName,
+      trackCount:  r.trackCount,
+      youtubeId:   null,
+      blogUrl:     null,
+    });
+  });
+
+  // Attach YouTube + blog to best matching suggestion (or create a stub)
+  if (ytId || blogUrl) {
+    let best = _suggestions.findIndex(s => _nameScore(query, s.name) >= 1);
+    if (best < 0 && _suggestions.length > 0) best = 0;
+    if (best >= 0) {
+      if (ytId)    _suggestions[best].youtubeId = ytId;
+      if (blogUrl) _suggestions[best].blogUrl   = blogUrl;
+    } else {
+      _suggestions.push({ name: query, desc: '', avatar: '', podcastUrl: '',
+                          podcastName: '', trackCount: null, youtubeId: ytId, blogUrl });
+    }
+  }
+
+  btn.disabled = false; btn.textContent = '🔍 Search';
+
+  if (_suggestions.length === 0) {
+    area.innerHTML = `<div class="suggest-status">No results found — fill in the fields manually below.</div>`;
+    return;
+  }
+
+  // Auto-apply best match if name score ≥ 2 (close match), otherwise let user pick
+  const bestIdx = _suggestions.reduce((bi, s, i) =>
+    _nameScore(query, s.name) > _nameScore(query, _suggestions[bi].name) ? i : bi, 0);
+  const autoApplied = _nameScore(query, _suggestions[bestIdx].name) >= 2;
+  if (autoApplied) applySuggestion(bestIdx, true);
+
+  // Render suggestion list (as "other options" if auto-applied, full list if not)
+  const label = autoApplied
+    ? `<div class="suggest-status" style="text-align:left;padding:0 0 6px">✓ Auto-filled — or pick a different match:</div>`
+    : `<div class="suggest-status" style="text-align:left;padding:0 0 6px">Select the best match:</div>`;
+
+  const cardsHtml = _suggestions.map((s, i) => {
+    const artHtml = s.avatar
+      ? `<img class="suggest-art" src="${escHtml(s.avatar)}"
+             onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'suggest-art-ph',textContent:'🎙'}))">`
+      : `<div class="suggest-art-ph">🎙</div>`;
+    const tags = [
+      s.podcastUrl ? `<span class="stag podcast">podcast ✓</span>` : '',
+      s.youtubeId  ? `<span class="stag youtube">youtube ✓</span>`  : '',
+      s.blogUrl    ? `<span class="stag blog">blog ✓</span>`        : '',
+    ].join('');
+    const sub = s.podcastName
+      ? `${s.podcastName}${s.trackCount ? ' · ' + s.trackCount + ' eps' : ''}`
+      : (s.youtubeId ? 'YouTube channel found' : '');
+    return `
+      <div class="suggest-card${i === bestIdx && autoApplied ? ' applied' : ''}" id="scard-${i}" onclick="applySuggestion(${i})">
+        ${artHtml}
+        <div class="suggest-info">
+          <div class="suggest-name">${escHtml(s.name)}</div>
+          ${sub ? `<div class="suggest-sub">${escHtml(sub)}</div>` : ''}
+          <div class="suggest-tags">${tags}</div>
+        </div>
+      </div>`;
+  }).join('');
+  area.innerHTML = label + `<div class="suggest-list">${cardsHtml}</div>`;
+}
+
+function applySuggestion(idx, silent = false) {
+  const s = _suggestions[idx];
+  if (!s) return;
+  if (s.name)       document.getElementById('f-name').value    = s.name;
+  if (s.desc)       document.getElementById('f-desc').value    = s.desc;
+  if (s.avatar)     document.getElementById('f-avatar').value  = s.avatar;
+  if (s.podcastUrl) document.getElementById('f-podcast').value = s.podcastUrl;
+  if (s.youtubeId)  document.getElementById('f-youtube').value = s.youtubeId;
+  if (s.blogUrl)    document.getElementById('f-blog').value    = s.blogUrl;
+  if (!silent) {
+    document.querySelectorAll('.suggest-card').forEach(c => c.classList.remove('applied'));
+    document.getElementById('scard-' + idx)?.classList.add('applied');
+  }
+}
+
+// ── ADD PERSON ──
+function addPerson() {
+  const name = document.getElementById('f-name').value.trim();
+  if (!name) { alert('Name is required'); return; }
+
+  const person = {
+    id:   name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now(),
+    name,
+    desc:   document.getElementById('f-desc').value.trim(),
+    avatar: document.getElementById('f-avatar').value.trim(),
+    feeds: {
+      podcast: document.getElementById('f-podcast').value.trim(),
+      youtube: document.getElementById('f-youtube').value.trim(),
+      twitter: document.getElementById('f-twitter').value.trim(),
+      blog:    document.getElementById('f-blog').value.trim(),
+    },
+    entries: [], lastUpdated: null, loading: false,
+    tags: [..._formTags],
+  };
+
+  persons.unshift(person);
+  saveState();
+  ['f-name','f-desc','f-avatar','f-podcast','f-youtube','f-twitter','f-blog'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('suggestArea').innerHTML = '';
+  _suggestions = [];
+  _formTags = []; renderFormTagChips();
+  renderTagFilterRow();
+  toggleAddPanel();
+  renderPersonCard(person, true);
+  updateStatus();
+  fetchPerson(person);
+}
+
+// ── DELETE PERSON ──
+function deletePerson(id) {
+  persons = persons.filter(p => p.id !== id);
+  const card = document.getElementById('card-' + id);
+  if (card) {
+    card.style.transition = 'opacity 0.2s, transform 0.2s';
+    card.style.opacity = '0'; card.style.transform = 'scale(0.95)';
+    setTimeout(() => card.remove(), 200);
+  }
+  saveState(); updateStatus(); rebuildAllEntries();
+}
+
+// ── FILTER ──
+function setFilter(f) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-chip').forEach(c =>
+    c.classList.toggle('active', c.dataset.filter === f));
+  renderAllCards();
+  if (currentView === 'timeline') renderTimeline();
+}
+
+// ── RENDER ALL CARDS ──
+function renderAllCards() {
+  const grid  = document.getElementById('personsGrid');
+  const empty = document.getElementById('emptyState');
+  grid.innerHTML = '';
+  const visible = activeTag
+    ? persons.filter(p =>
+        (p.tags||[]).includes(activeTag) ||
+        (p.entries||[]).some(e => (entryTags[e.id]||[]).includes(activeTag)))
+    : persons;
+  if (visible.length === 0) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  visible.forEach((p, i) => renderPersonCard(p, false, i * 60));
+}
+
+function renderPersonCard(person, prepend = false, delay = 0) {
+  const grid  = document.getElementById('personsGrid');
+  document.getElementById('emptyState').style.display = 'none';
+
+  const existing = document.getElementById('card-' + person.id);
+  if (existing) existing.remove();
+
+  let entries = person.entries || [];
+  if (currentFilter !== 'all') entries = entries.filter(e => e.platform === currentFilter);
+
+  const activePlatforms = Object.entries(person.feeds).filter(([,v]) => v).map(([k]) => k);
+  const avatarContent   = person.avatar
+    ? `<img src="${person.avatar}" alt="" onerror="this.parentElement.innerHTML='${getInitials(person.name)}'"/>`
+    : getInitials(person.name);
+
+  const platformIconsHTML = activePlatforms.map(p =>
+    `<div class="picon" style="background:${hexAlpha(p)}" data-tip="${PLATFORMS[p].label}">${PLATFORMS[p].emoji}</div>`
+  ).join('');
+
+  const newCount = entries.filter(e => !seenIds.has(e.id)).length;
+
+  let entriesHTML = '';
+  if (person.loading) {
+    entriesHTML = [1,2,3].map(() => `
+      <div class="skeleton-entry">
+        <div class="skel skel-dot"></div>
+        <div class="skel-lines">
+          <div class="skel skel-line" style="width:90%"></div>
+          <div class="skel skel-line" style="width:55%"></div>
+        </div>
+      </div>`).join('');
+  } else if (entries.length === 0) {
+    entriesHTML = `<div style="padding:16px;color:var(--muted);font-size:11px;text-align:center">
+      ${activePlatforms.length === 0 ? 'No feeds configured' : 'No entries yet — click refresh'}
+    </div>`;
+  } else {
+    entriesHTML = entries.slice(0, 4).map(entry => {
+      const isNew  = !seenIds.has(entry.id);
+      const pl     = PLATFORMS[entry.platform];
+      const eTags  = entryTags[entry.id] || [];
+      const eTagsHtml = eTags.map(t => {
+        const c = tagColor(t);
+        return `<span class="tag-chip" style="background:${c}22;color:${c};font-size:9px;padding:1px 5px">${escHtml(t)}</span>`;
+      }).join('');
+      return `
+        <div class="entry-row" onclick="openEntry(${JSON.stringify(entry).replace(/"/g, '&quot;')})">
+          <div class="entry-platform-dot" style="background:${pl.color}"></div>
+          <div class="entry-content">
+            <div class="entry-title">${escHtml(entry.title)}</div>
+            <div class="entry-meta">
+              <span class="entry-platform-label">${pl.emoji} ${pl.label}</span>
+              <span class="entry-time">${timeAgo(entry.date)}</span>
+              ${eTagsHtml ? `<span style="display:inline-flex;gap:3px;margin-left:4px">${eTagsHtml}</span>` : ''}
+            </div>
+          </div>
+          ${isNew ? '<span class="new-badge">NEW</span>' : ''}
+        </div>`;
+    }).join('');
+  }
+
+  const lastUpdated = person.lastUpdated ? 'Updated ' + timeAgo(new Date(person.lastUpdated)) : 'Never fetched';
+  const fetchErrors = person.fetchErrors || [];
+  const errorHtml   = fetchErrors.length
+    ? `<span style="color:#e84a4a;font-size:10px" data-tip="Failed: ${fetchErrors.join(', ')}">⚠ ${fetchErrors.length} feed${fetchErrors.length>1?'s':''} failed</span>`
+    : '';
+
+  const card = document.createElement('div');
+  card.className = 'person-card';
+  card.id = 'card-' + person.id;
+  card.style.animationDelay = delay + 'ms';
+  card.innerHTML = `
+    <div class="card-header" onclick="openPersonDetail('${person.id}')">
+      <div class="avatar">${avatarContent}</div>
+      <div class="card-person-info">
+        <div class="card-person-name">${escHtml(person.name)}
+          ${newCount > 0 ? `<span style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--accent);font-weight:400;margin-left:6px">${newCount} new</span>` : ''}
+        </div>
+        ${person.desc ? `<div class="card-person-desc">${escHtml(person.desc)}</div>` : ''}
+        <div class="person-tags">
+          ${(person.tags||[]).map(t => {
+            const c = tagColor(t);
+            return `<span class="tag-chip" style="background:${c}22;color:${c}" onclick="event.stopPropagation();setTagFilter('${escHtml(t)}')">${escHtml(t)}</span>`;
+          }).join('')}
+          ${(person.tags||[]).length === 0
+            ? `<button class="tag-edit-btn" style="opacity:0.45;font-size:10px;letter-spacing:0.04em"
+                onclick="event.stopPropagation();openTagEditor('${person.id}')"
+                data-tip="Add topics">+ topics</button>`
+            : `<button class="tag-edit-btn"
+                onclick="event.stopPropagation();openTagEditor('${person.id}')"
+                data-tip="Edit topics">✎</button>`}
+        </div>
+      </div>
+      <div class="platform-icons" onclick="event.stopPropagation()">${platformIconsHTML}</div>
+    </div>
+    <div class="card-entries" id="entries-${person.id}">${entriesHTML}</div>
+    <div class="card-footer">
+      <button class="card-refresh-btn" id="refresh-${person.id}"
+        onclick="fetchPerson(persons.find(p=>p.id==='${person.id}'))" data-tip="Refresh">↻</button>
+      <span class="card-last-updated">${errorHtml || lastUpdated}</span>
+      <button class="card-delete-btn"
+        onclick="if(confirm('Remove ${escHtml(person.name)}?')) deletePerson('${person.id}')" data-tip="Remove">✕</button>
+    </div>`;
+
+  prepend && grid.firstChild ? grid.insertBefore(card, grid.firstChild) : grid.appendChild(card);
+}
+
+// ── TIMELINE ──
+function renderTimeline() {
+  rebuildAllEntries();
+  const container = document.getElementById('timelineContainer');
+  const tlEmpty   = document.getElementById('tlEmptyState');
+
+  let entries = [...allEntries];
+  if (currentFilter !== 'all') entries = entries.filter(e => e.platform === currentFilter);
+  if (activeTag) entries = entries.filter(e =>
+    (persons.find(p => p.id === e.personId)?.tags||[]).includes(activeTag) ||
+    (entryTags[e.id]||[]).includes(activeTag));
+  entries.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  if (entries.length === 0) { container.innerHTML = ''; tlEmpty.style.display = 'block'; return; }
+  tlEmpty.style.display = 'none';
+
+  const groups = {};
+  entries.forEach(e => {
+    const d   = new Date(e.date);
+    const key = isNaN(d) ? 'Unknown date' : formatDate(d);
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(e);
+  });
+
+  container.innerHTML = Object.entries(groups).map(([date, items]) => `
+    <div class="timeline-date-group">
+      <div class="timeline-date-label">${date}</div>
+      ${items.map(entry => {
+        const person = persons.find(p => p.id === entry.personId) || {};
+        const pl     = PLATFORMS[entry.platform];
+        const isNew  = !seenIds.has(entry.id);
+        const av     = person.avatar
+          ? `<img src="${person.avatar}" alt="" onerror="this.innerHTML='${getInitials(person.name||'?')}'"/>`
+          : getInitials(person.name || '?');
+        return `
+          <div class="timeline-item" onclick="openEntry(${JSON.stringify(entry).replace(/"/g,'&quot;')})">
+            <div class="tl-platform-bar" style="background:${pl.color}"></div>
+            <div class="tl-avatar">${av}</div>
+            <div class="tl-body">
+              <div class="tl-who">
+                <strong>${escHtml(person.name||'Unknown')}</strong>
+                <span style="color:${pl.color}">${pl.emoji} ${pl.label}</span>
+              </div>
+              <div class="tl-title">${escHtml(entry.title)}</div>
+              <div class="tl-time">${timeAgo(entry.date)}</div>
+            </div>
+            ${isNew ? '<span class="tl-new-badge">NEW</span>' : ''}
+          </div>`;
+      }).join('')}
+    </div>`).join('');
+}
+
+function rebuildAllEntries() {
+  allEntries = [];
+  persons.forEach(p => (p.entries || []).forEach(e => allEntries.push(e)));
+}
+
+// ── FETCH ──
+async function fetchPerson(person) {
+  if (!person) return;
+  person.loading = true;
+  updateCardEntries(person);
+  const btn = document.getElementById('refresh-' + person.id);
+  if (btn) btn.classList.add('spinning');
+
+  const newEntries = [];
+  const failedFeeds = [];
+
+  async function pull(url, platform) {
+    const { entries, error } = await fetchRSS(url, platform, person.id);
+    if (error) failedFeeds.push(platform);
+    newEntries.push(...entries);
+  }
+
+  if (person.feeds.youtube)
+    await pull(`https://www.youtube.com/feeds/videos.xml?channel_id=${person.feeds.youtube}`, 'youtube');
+  if (person.feeds.podcast) await pull(person.feeds.podcast, 'podcast');
+  if (person.feeds.blog)    await pull(person.feeds.blog,    'blog');
+  if (person.feeds.twitter) await pull(person.feeds.twitter, 'twitter');
+
+  person.entries     = newEntries.sort((a,b) => new Date(b.date)-new Date(a.date)).slice(0, 20);
+  person.lastUpdated = new Date().toISOString();
+  person.fetchErrors = failedFeeds;
+  person.loading     = false;
+
+  saveState(); rebuildAllEntries();
+  renderPersonCard(person, false);
+  updateStatus();
+  if (currentView === 'timeline') renderTimeline();
+  if (btn) btn.classList.remove('spinning');
+}
+
+async function fetchRSS(url, platform, personId) {
+  let xml = null;
+
+  // Step 1: Direct fetch — YouTube RSS and many podcast feeds support CORS natively
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (resp.ok) {
+      const text = await resp.text();
+      // Make sure it looks like XML, not an HTML error page
+      if (text.trimStart().startsWith('<') && !text.includes('<html')) xml = text;
+    }
+  } catch(e) {
+    // CORS blocked or network error — fall through to proxies
+  }
+
+  // Step 2: corsproxy.io (returns raw content)
+  if (!xml) {
+    try {
+      const resp = await fetch(CORS_PRIMARY + encodeURIComponent(url), { signal: AbortSignal.timeout(10000) });
+      if (resp.ok) xml = await resp.text();
+    } catch(e) {
+      console.warn('Primary proxy failed, trying fallback:', url, e.message);
+    }
+  }
+
+  // Step 3: allorigins.win/raw (returns raw content, same as corsproxy)
+  if (!xml) {
+    try {
+      const resp = await fetch(CORS_FALLBACK + encodeURIComponent(url), { signal: AbortSignal.timeout(10000) });
+      if (resp.ok) xml = await resp.text();
+    } catch(e) {
+      console.warn('Fallback proxy also failed:', url, e.message);
+    }
+  }
+
+  if (!xml) return { entries: [], error: true };
+
+  try {
+    const doc   = new DOMParser().parseFromString(xml, 'text/xml');
+    // Check for XML parse error
+    if (doc.querySelector('parsererror')) throw new Error('XML parse error');
+    const items = doc.querySelectorAll('item, entry');
+    const results = [];
+
+    items.forEach((item, i) => {
+      if (i >= 10) return;
+      const title   = getText(item, 'title'); if (!title) return;
+      const link    = getText(item, 'link') || item.querySelector('link')?.getAttribute('href') || '';
+      const rawDesc = getText(item, 'description') || getText(item, 'summary') || getText(item, 'content') || '';
+      const dateStr = getText(item, 'pubDate') || getText(item, 'published') || getText(item, 'updated') || '';
+      const id      = `${personId}-${platform}-${link||title}`.replace(/\s/g,'').slice(0,80);
+
+      // Podcasting 2.0 transcript URL (<podcast:transcript url="..." type="...">)
+      const transcriptEl  = Array.from(item.children).find(el => el.localName === 'transcript');
+      const transcriptUrl = transcriptEl?.getAttribute('url') || '';
+
+      results.push({
+        id, personId, platform,
+        title: cleanText(title),
+        link,
+        desc:  cleanText(rawDesc).slice(0, 5000),   // full summary, not truncated
+        transcriptUrl,
+        date:  dateStr ? new Date(dateStr).toISOString() : new Date().toISOString(),
+      });
+    });
+    return { entries: results, error: false };
+  } catch(e) {
+    console.warn('Feed parse error:', url, e.message);
+    return { entries: [], error: true };
+  }
+}
+
+function updateCardEntries(person) {
+  const c = document.getElementById('entries-' + person.id);
+  if (!c || !person.loading) return;
+  c.innerHTML = [1,2,3].map(() => `
+    <div class="skeleton-entry">
+      <div class="skel skel-dot"></div>
+      <div class="skel-lines">
+        <div class="skel skel-line" style="width:85%"></div>
+        <div class="skel skel-line" style="width:50%"></div>
+      </div>
+    </div>`).join('');
+}
+
+// ── REFRESH ALL ──
+async function refreshAll() {
+  const btn = document.getElementById('refreshAllBtn');
+  btn.classList.add('spinning');
+  await Promise.all(persons.map(p => fetchPerson(p)));
+  btn.classList.remove('spinning');
+}
+
+// ── ENTRY MODAL ──
+function openEntry(entry) {
+  if (typeof entry === 'string') entry = JSON.parse(entry);
+  seenIds.add(entry.id);
+  _currentModalEntry = entry;
+  saveState();
+
+  const pl     = PLATFORMS[entry.platform];
+  const person = persons.find(p => p.id === entry.personId) || {};
+
+  // Render description with paragraph breaks preserved
+  const descHtml = entry.desc
+    ? entry.desc.split(/\n{2,}/)
+        .map(p => `<p>${escHtml(p.trim()).replace(/\n/g,'<br>')}</p>`)
+        .join('')
+    : '';
+
+  document.getElementById('modalContent').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+      <span class="modal-platform-tag" style="background:${pl.color}20;color:${pl.color}">
+        ${pl.emoji} ${pl.label}
+      </span>
+      <span style="font-size:11px;color:var(--muted)">${escHtml(person.name||'')}</span>
+    </div>
+    <div class="modal-title">${escHtml(entry.title)}</div>
+    <div class="modal-meta">${formatFullDate(entry.date)}</div>
+    ${descHtml ? `<div class="modal-desc">${descHtml}</div>` : ''}
+    <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Topics</div>
+      <div class="tag-input-wrap" onclick="document.getElementById('met-input').focus()">
+        <div id="met-chips" style="display:contents"></div>
+        <input id="met-input" type="text" placeholder="Add topic, press Enter or comma…"
+               onkeydown="handleModalTagKeydown(event)">
+      </div>
+    </div>`;
+
+  document.getElementById('modalLink').href = entry.link || '#';
+  // render any existing tags for this entry
+  renderModalTags();
+
+  // Transcript button — show for podcasts, link to parsed URL or fall back to a search
+  const tBtn = document.getElementById('transcriptBtn');
+  if (entry.platform === 'podcast') {
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent('"' + entry.title + '" transcript')}`;
+    tBtn.href        = entry.transcriptUrl || searchUrl;
+    tBtn.textContent = entry.transcriptUrl ? '📄 Transcript' : '🔍 Find Transcript';
+    tBtn.title       = entry.transcriptUrl
+      ? 'Open episode transcript'
+      : 'Search Google for a transcript of this episode';
+    tBtn.style.display = '';
+  } else {
+    tBtn.style.display = 'none';
+  }
+
+  document.getElementById('modalOverlay').classList.add('open');
+  renderAllCards(); updateStatus();
+}
+
+function closeModal(e) {
+  if (!e || e.target === document.getElementById('modalOverlay') || !e.target) {
+    document.getElementById('modalOverlay').classList.remove('open');
+    _currentModalEntry = null;
+  }
+}
+
+// ── STATUS ──
+function updateStatus() {
+  document.getElementById('statPeople').textContent = persons.length;
+  rebuildAllEntries();
+  document.getElementById('statNew').textContent = allEntries.filter(e => !seenIds.has(e.id)).length;
+}
+
+// ── HELPERS ──
+const getText    = (el, tag) => { const n = el.querySelector(tag); return n ? (n.textContent||'').trim() : ''; };
+const cleanText  = str => str.replace(/<[^>]*>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/\s+/g,' ').trim();
+const escHtml    = str => String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const getInitials = name => name.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
+const hexAlpha   = p => ({ podcast:'#2a1510', youtube:'#2a1010', twitter:'#101a2a', blog:'#141f10' }[p]||'#1a1a22');
+
+function timeAgo(dateStr) {
+  const date = new Date(dateStr); if (isNaN(date)) return 'Unknown';
+  const diff = (Date.now() - date) / 1000;
+  if (diff < 60)      return 'just now';
+  if (diff < 3600)    return Math.floor(diff/60)   + 'm ago';
+  if (diff < 86400)   return Math.floor(diff/3600) + 'h ago';
+  if (diff < 604800)  return Math.floor(diff/86400)+ 'd ago';
+  return date.toLocaleDateString('en-GB', { day:'numeric', month:'short' });
+}
+
+function formatDate(d) {
+  const today = new Date(); const yesterday = new Date(today); yesterday.setDate(today.getDate()-1);
+  if (d.toDateString() === today.toDateString())     return 'Today';
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' });
+}
+
+function formatFullDate(dateStr) {
+  const d = new Date(dateStr); if (isNaN(d)) return '';
+  return d.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
+// ── INIT ──
+loadState();
+renderAllCards();
+renderTagFilterRow();
+updateStatus();
+</script>
+</body>
+</html>
