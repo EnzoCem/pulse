@@ -534,6 +534,29 @@
   }
   .modal-desc p { margin: 0 0 10px; }
   .modal-desc p:last-child { margin-bottom: 0; }
+
+  .transcript-area {
+    margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px;
+  }
+  .transcript-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 10px;
+  }
+  .transcript-body {
+    font-family: 'Libre Baskerville', serif; font-size: 13px;
+    line-height: 1.75; color: var(--text);
+    max-height: 320px; overflow-y: auto;
+    padding-right: 6px;
+    white-space: pre-wrap;
+  }
+  .transcript-body::-webkit-scrollbar { width: 4px; }
+  .transcript-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .transcript-loading {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: var(--muted); padding: 8px 0; animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
   .modal-actions {
     display: flex; gap: 10px; margin-top: 20px;
   }
@@ -945,7 +968,8 @@
   <div class="modal" id="modal">
     <div id="modalContent"></div>
     <div class="modal-actions">
-      <a id="transcriptBtn" href="#" target="_blank" rel="noopener" class="btn btn-ghost" style="display:none">📄 Transcript</a>
+      <a   id="transcriptBtn"   href="#" target="_blank" rel="noopener" class="btn btn-ghost" style="display:none">🔍 Find Transcript</a>
+      <button id="ytTranscriptBtn" class="btn btn-ghost" style="display:none" onclick="loadYouTubeTranscript()">📄 Load Transcript</button>
       <a id="modalLink" href="#" target="_blank" rel="noopener" class="btn btn-primary">Open →</a>
       <button class="btn btn-ghost" onclick="closeModal()">Close</button>
     </div>
@@ -1143,6 +1167,87 @@ function handleModalTagKeydown(e) {
   } else if (e.key === 'Backspace' && !input.value && _currentModalEntry) {
     const id = _currentModalEntry.id;
     if (entryTags[id]?.length) { entryTags[id].pop(); saveState(); renderModalTags(); renderTagFilterRow(); }
+  }
+}
+
+// ── YOUTUBE TRANSCRIPT ──
+function extractYouTubeId(url) {
+  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+async function loadYouTubeTranscript() {
+  if (!_currentModalEntry) return;
+  const btn = document.getElementById('ytTranscriptBtn');
+  const area = document.getElementById('transcriptArea');
+  if (!area) return;
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Loading…';
+  area.innerHTML = '<div class="transcript-loading">Fetching transcript from YouTube…</div>';
+
+  const videoId = extractYouTubeId(_currentModalEntry.link || '');
+  if (!videoId) {
+    area.innerHTML = '<div class="transcript-loading">Could not find a video ID in this URL.</div>';
+    btn.disabled = false; btn.textContent = '📄 Load Transcript';
+    return;
+  }
+
+  try {
+    // Step 1: fetch the video page to extract the caption track URL
+    const pageUrl  = `https://www.youtube.com/watch?v=${videoId}`;
+    const pageResp = await fetch(CORS_PRIMARY + encodeURIComponent(pageUrl),
+      { signal: AbortSignal.timeout(15000) });
+    if (!pageResp.ok) throw new Error('Video page fetch failed');
+    const html = await pageResp.text();
+
+    // Step 2: find captionTracks array in the embedded JSON
+    const match = html.match(/"captionTracks":(\[.*?\])/);
+    if (!match) throw new Error('NO_CAPTIONS');
+    const tracks = JSON.parse(match[1]);
+
+    // Step 3: pick English (or first available) track
+    const track = tracks.find(t => t.languageCode === 'en' || t.vssId?.startsWith('.en'))
+               || tracks.find(t => t.kind !== 'asr' && t.languageCode?.startsWith('en'))
+               || tracks[0];
+    if (!track?.baseUrl) throw new Error('NO_CAPTIONS');
+
+    // Step 4: fetch the timed-text XML
+    const ttResp = await fetch(CORS_PRIMARY + encodeURIComponent(track.baseUrl),
+      { signal: AbortSignal.timeout(10000) });
+    if (!ttResp.ok) throw new Error('Timed-text fetch failed');
+    const xml = await ttResp.text();
+
+    // Step 5: parse XML and join into readable paragraphs (~every 15 segments)
+    const doc  = new DOMParser().parseFromString(xml, 'text/xml');
+    const segs = Array.from(doc.querySelectorAll('text')).map(t =>
+      t.textContent.replace(/&amp;/g,'&').replace(/&quot;/g,'"')
+                   .replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').trim()
+    ).filter(Boolean);
+
+    if (!segs.length) throw new Error('NO_CAPTIONS');
+
+    // Group into ~paragraph chunks (every 15 segments ≈ ~45 seconds each)
+    const paras = [];
+    for (let i = 0; i < segs.length; i += 15) paras.push(segs.slice(i, i+15).join(' '));
+    const text = paras.join('\n\n');
+
+    const isAuto = track.kind === 'asr';
+    area.innerHTML = `
+      <div class="transcript-label">
+        Transcript ${isAuto ? '<span style="color:var(--muted)">(auto-generated)</span>' : ''}
+        — ${segs.length} segments
+      </div>
+      <div class="transcript-body">${escHtml(text)}</div>`;
+    btn.textContent = '📄 Transcript ✓';
+
+  } catch(e) {
+    if (e.message === 'NO_CAPTIONS') {
+      area.innerHTML = '<div class="transcript-loading">No captions available for this video.</div>';
+    } else {
+      area.innerHTML = `<div class="transcript-loading">Could not load transcript — ${e.message}</div>`;
+    }
+    btn.disabled = false; btn.textContent = '📄 Load Transcript';
   }
 }
 
@@ -2036,36 +2141,46 @@ function openEntry(entry) {
         <input id="met-input" type="text" placeholder="Add topic, press Enter or comma…"
                onkeydown="handleModalTagKeydown(event)">
       </div>
-    </div>`;
+    </div>
+    <div id="transcriptArea"></div>`;
 
   document.getElementById('modalLink').href = entry.link || '#';
   // render any existing tags for this entry
   renderModalTags();
 
-  // Transcript button — show for podcasts, link to parsed URL or fall back to a targeted search
-  const tBtn = document.getElementById('transcriptBtn');
-  if (entry.platform === 'podcast') {
+  // Reset transcript area
+  document.getElementById('transcriptArea').innerHTML = '';
+
+  const tBtn   = document.getElementById('transcriptBtn');
+  const ytBtn  = document.getElementById('ytTranscriptBtn');
+  tBtn.style.display  = 'none';
+  ytBtn.style.display = 'none';
+  ytBtn.disabled = false;
+  ytBtn.textContent = '📄 Load Transcript';
+
+  if (entry.platform === 'youtube') {
+    // YouTube: inline transcript via captions API
+    ytBtn.style.display = '';
+
+  } else if (entry.platform === 'podcast') {
     if (entry.transcriptUrl) {
-      // RSS feed provided a direct transcript link (Podcasting 2.0)
+      // Podcasting 2.0: RSS feed has a direct transcript link
       tBtn.href        = entry.transcriptUrl;
       tBtn.textContent = '📄 Transcript';
-      tBtn.title       = 'Open episode transcript (from RSS feed)';
+      tBtn.title       = 'Open episode transcript (provided by the podcast RSS feed)';
     } else {
-      // Build the most specific search possible:
-      // "<Show Name>" "<Episode Title>" "<Month Year>" transcript
-      const showName  = person.name ? `"${person.name}"` : '';
-      const epTitle   = `"${entry.title}"`;
-      const epDate    = entry.date
+      // Fallback: targeted Google search — "<Show>" "<Episode>" "<Month Year>" transcript
+      const showName = person.name ? `"${person.name}"` : '';
+      const epTitle  = `"${entry.title}"`;
+      const epDate   = entry.date
         ? new Date(entry.date).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
         : '';
-      const query     = [showName, epTitle, epDate, 'transcript'].filter(Boolean).join(' ');
+      const query    = [showName, epTitle, epDate, 'transcript'].filter(Boolean).join(' ');
       tBtn.href        = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
       tBtn.textContent = '🔍 Find Transcript';
       tBtn.title       = `Search: ${query}`;
     }
     tBtn.style.display = '';
-  } else {
-    tBtn.style.display = 'none';
   }
 
   document.getElementById('modalOverlay').classList.add('open');
