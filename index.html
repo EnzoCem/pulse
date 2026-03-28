@@ -865,8 +865,8 @@
       <div class="feed-row">
         <div class="platform-badge" style="background:#1a0f0f; font-size:16px;">▶️</div>
         <div class="form-row" style="flex:1">
-          <label>YouTube Channel ID</label>
-          <input type="text" id="f-youtube" placeholder="UCxxxxxxxxxxxxxxxx">
+          <label>YouTube Channel ID, @handle, or URL</label>
+          <input type="text" id="f-youtube" placeholder="UCxxxxxxx  or  @PowerfulJRE  or  youtube.com/@…">
         </div>
       </div>
       <div class="feed-row">
@@ -1523,7 +1523,7 @@ function renderPersonDetail() {
 
   const feedRows = [
     { key: 'podcast', label: '🎙 Podcast',  ph: 'RSS feed URL',         hint: '' },
-    { key: 'youtube', label: '▶ YouTube',   ph: 'Channel ID (UC…)',      hint: '' },
+    { key: 'youtube', label: '▶ YouTube',   ph: '@handle, URL, or UC… ID', hint: '' },
     { key: 'twitter', label: '🐦 X / Twitter', ph: 'rss.app RSS URL',   hint: '' },
     { key: 'blog',    label: '✍ Blog',      ph: 'RSS or Atom feed URL',  hint: '' },
   ].map(f => {
@@ -1661,9 +1661,12 @@ function renderDetailTagChips() {
   }).join('');
 }
 
-function savePersonDetail() {
+async function savePersonDetail() {
   if (!currentPerson) return;
-  const p = currentPerson;
+  const p   = currentPerson;
+  const btn = document.querySelector('.detail-save-btn');
+  const msg = document.getElementById('detail-save-msg');
+
   p.name   = document.getElementById('df-name')?.value.trim()   || p.name;
   p.desc   = document.getElementById('df-desc')?.value.trim()   || '';
   p.avatar = document.getElementById('df-avatar')?.value.trim() || '';
@@ -1671,13 +1674,22 @@ function savePersonDetail() {
   p.feeds.podcast = document.getElementById('df-podcast')?.value.trim() || '';
   p.feeds.blog    = document.getElementById('df-blog')?.value.trim()    || '';
   p.feeds.twitter = document.getElementById('df-twitter')?.value.trim() || '';
-  // YouTube: accept full URL or bare channel ID
+
+  // Resolve YouTube: accepts URL, @handle, username, or raw channel ID
   const ytRaw = document.getElementById('df-youtube')?.value.trim() || '';
-  const ytMatch = ytRaw.match(/channel_id=([^&]+)/) || ytRaw.match(/\/channel\/(UC[^/?]+)/);
-  p.feeds.youtube = ytMatch ? ytMatch[1] : ytRaw;
+  if (ytRaw) {
+    if (btn) { btn.textContent = 'Resolving…'; btn.disabled = true; }
+    p.feeds.youtube = await resolveYouTubeChannelId(ytRaw);
+    // Update the field so the user sees the resolved ID
+    const ytField = document.getElementById('df-youtube');
+    if (ytField) ytField.value = p.feeds.youtube;
+    if (btn) { btn.textContent = 'Save Changes'; btn.disabled = false; }
+  } else {
+    p.feeds.youtube = '';
+  }
+
   saveState();
   renderTagFilterRow();
-  const msg = document.getElementById('detail-save-msg');
   if (msg) { msg.classList.add('show'); setTimeout(() => msg.classList.remove('show'), 2000); }
 }
 
@@ -1723,14 +1735,47 @@ async function _fetchHtml(url) {
   return html;
 }
 
+// Resolve any YouTube input to a bare channel ID (UC…).
+// Accepts: raw UC… ID, full channel URL, @handle, or plain username.
+async function resolveYouTubeChannelId(raw) {
+  if (!raw) return '';
+  raw = raw.trim();
+
+  // Already a channel ID
+  if (/^UC[a-zA-Z0-9_-]{21,22}$/.test(raw)) return raw;
+
+  // URL containing /channel/UC…
+  const chanMatch = raw.match(/\/channel\/(UC[a-zA-Z0-9_-]{21,22})/);
+  if (chanMatch) return chanMatch[1];
+
+  // URL containing channel_id=UC…
+  const paramMatch = raw.match(/channel_id=(UC[a-zA-Z0-9_-]{21,22})/);
+  if (paramMatch) return paramMatch[1];
+
+  // Extract handle from URL (youtube.com/@handle) or bare @handle
+  const handleMatch = raw.match(/(?:youtube\.com\/)?@([a-zA-Z0-9_.-]+)/);
+  const handle = handleMatch ? handleMatch[1] : raw.replace(/^@/, '');
+
+  // Fetch the YouTube RSS using ?user= — it embeds the channel ID in the feed
+  const rssUrl = `https://www.youtube.com/feeds/videos.xml?user=${encodeURIComponent(handle)}`;
+  try {
+    const resp = await fetch(CORS_FALLBACK2 + encodeURIComponent(rssUrl), { signal: AbortSignal.timeout(8000) });
+    if (resp.ok) {
+      const text = await resp.text();
+      const m = text.match(/<id>yt:channel:([^<]+)<\/id>/);
+      if (m) return 'UC' + m[1];
+    }
+  } catch(e) { console.warn('YouTube channel resolve failed:', e.message); }
+
+  // Last resort — return the raw input so the user still sees what they typed
+  return raw;
+}
+
 async function _findYouTube(name) {
   const slugs = [name.toLowerCase().replace(/\s+/g,''), name.toLowerCase().replace(/\s+/g,'-')];
   for (const slug of slugs) {
-    const html = await _fetchHtml(`https://www.youtube.com/@${slug}`);
-    if (html) {
-      const m = html.match(/"channelId":"(UC[a-zA-Z0-9_-]{22})"/);
-      if (m) return m[1];
-    }
+    const id = await resolveYouTubeChannelId('@' + slug);
+    if (id && /^UC/.test(id)) return id;
   }
   return null;
 }
@@ -1895,9 +1940,19 @@ function applySuggestion(idx, silent = false) {
 }
 
 // ── ADD PERSON ──
-function addPerson() {
+async function addPerson() {
   const name = document.getElementById('f-name').value.trim();
   if (!name) { alert('Name is required'); return; }
+
+  // Resolve YouTube input (handle, URL, or raw ID) → bare channel ID
+  const ytRaw = document.getElementById('f-youtube').value.trim();
+  const addBtn = document.querySelector('.btn-primary[onclick="addPerson()"]');
+  let ytId = '';
+  if (ytRaw) {
+    if (addBtn) { addBtn.textContent = 'Resolving…'; addBtn.disabled = true; }
+    ytId = await resolveYouTubeChannelId(ytRaw);
+    if (addBtn) { addBtn.textContent = 'Add Person'; addBtn.disabled = false; }
+  }
 
   const person = {
     id:   name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now(),
@@ -1906,7 +1961,7 @@ function addPerson() {
     avatar: document.getElementById('f-avatar').value.trim(),
     feeds: {
       podcast: document.getElementById('f-podcast').value.trim(),
-      youtube: document.getElementById('f-youtube').value.trim(),
+      youtube: ytId,
       twitter: document.getElementById('f-twitter').value.trim(),
       blog:    document.getElementById('f-blog').value.trim(),
     },
