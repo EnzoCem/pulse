@@ -996,8 +996,9 @@ function getPlatform(entry, person) {
 
 // ── CORS PROXIES ──
 // Primary: corsproxy.io (returns raw content). Fallback: allorigins.win /raw (also raw content).
-const CORS_PRIMARY  = 'https://corsproxy.io/?';
-const CORS_FALLBACK = 'https://api.allorigins.win/raw?url=';
+const CORS_PRIMARY   = 'https://corsproxy.io/?';
+const CORS_FALLBACK  = 'https://api.allorigins.win/raw?url=';
+const CORS_FALLBACK2 = 'https://api.codetabs.com/v1/proxy?quest=';
 
 // ── STATE ──
 let persons      = [];
@@ -2230,13 +2231,23 @@ async function fetchRSS(url, platform, personId) {
     }
   }
 
-  // Step 3: allorigins.win/raw (returns raw content, same as corsproxy)
+  // Step 3: allorigins.win/raw
   if (!xml) {
     try {
       const resp = await fetch(CORS_FALLBACK + encodeURIComponent(url), { signal: AbortSignal.timeout(10000) });
       if (resp.ok) xml = await resp.text();
     } catch(e) {
       console.warn('Fallback proxy also failed:', url, e.message);
+    }
+  }
+
+  // Step 4: codetabs.com — works well for YouTube feeds
+  if (!xml) {
+    try {
+      const resp = await fetch(CORS_FALLBACK2 + encodeURIComponent(url), { signal: AbortSignal.timeout(10000) });
+      if (resp.ok) xml = await resp.text();
+    } catch(e) {
+      console.warn('Codetabs proxy also failed:', url, e.message);
     }
   }
 
