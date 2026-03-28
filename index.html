@@ -1980,6 +1980,49 @@ function rebuildAllEntries() {
 }
 
 // ── FETCH ──
+// Platform preference when deduplicating (higher index = preferred)
+const PLATFORM_PREF = { twitter: 0, blog: 1, podcast: 2, youtube: 3 };
+
+function titleKey(title) {
+  return title.toLowerCase()
+    .replace(/^#?\d+\s*[-–—]\s*/, '')   // strip leading episode numbers: "#494 – "
+    .replace(/\|.*$/, '')                // strip trailing " | Lex Fridman Podcast #494"
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function titlesAreDuplicates(a, b) {
+  if (a.platform === b.platform) return false;
+  // Must be within 2 days of each other
+  if (Math.abs(new Date(a.date) - new Date(b.date)) > 2 * 864e5) return false;
+  const ka = titleKey(a.title);
+  const kb = titleKey(b.title);
+  // Exact match after normalisation
+  if (ka === kb) return true;
+  // One contains the other (handles "Jensen Huang: NVIDIA..." ⊂ longer title)
+  if (ka.includes(kb) || kb.includes(ka)) return true;
+  // Word-overlap >65%
+  const wa = new Set(ka.split(' ').filter(w => w.length > 3));
+  const wb = new Set(kb.split(' ').filter(w => w.length > 3));
+  if (!wa.size || !wb.size) return false;
+  const shared = [...wa].filter(w => wb.has(w)).length;
+  return shared / Math.min(wa.size, wb.size) >= 0.65;
+}
+
+function deduplicateEntries(entries) {
+  // Sort newest first, then prefer higher-value platforms
+  const sorted = [...entries].sort((a, b) =>
+    new Date(b.date) - new Date(a.date) ||
+    (PLATFORM_PREF[b.platform] ?? 0) - (PLATFORM_PREF[a.platform] ?? 0)
+  );
+  const kept = [];
+  for (const entry of sorted) {
+    if (!kept.some(k => titlesAreDuplicates(k, entry))) kept.push(entry);
+  }
+  return kept;
+}
+
 async function fetchPerson(person) {
   if (!person) return;
   person.loading = true;
@@ -2002,7 +2045,7 @@ async function fetchPerson(person) {
   if (person.feeds.blog)    await pull(person.feeds.blog,    'blog');
   if (person.feeds.twitter) await pull(person.feeds.twitter, 'twitter');
 
-  person.entries     = newEntries.sort((a,b) => new Date(b.date)-new Date(a.date)).slice(0, 20);
+  person.entries     = deduplicateEntries(newEntries).slice(0, 20);
   person.lastUpdated = new Date().toISOString();
   person.fetchErrors = failedFeeds;
   person.loading     = false;
