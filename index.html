@@ -1602,7 +1602,7 @@ async function _findYouTube(name) {
   return null;
 }
 
-async function _findBlog(name) {
+async function _findBlog(name, podcastUrl = '') {
   const s1 = name.toLowerCase().replace(/\s+/g,'-');
   const s2 = name.toLowerCase().replace(/\s+/g,'');
   const candidates = [
@@ -1612,12 +1612,26 @@ async function _findBlog(name) {
     `https://${s2}.com/feed`,
     `https://www.${s1}.com/feed`,
   ];
-  // Try all candidates in parallel — return the first valid RSS URL
+  // Domain of the iTunes-found podcast feed — skip any blog URL on the same domain
+  // to prevent showing the same source as both podcast + blog
+  const podcastDomain = podcastUrl ? new URL(podcastUrl).hostname : '';
+
   const checks = candidates.map(async url => {
-    let text = null;
-    try { const r = await fetch(url, { signal: AbortSignal.timeout(4000) }); if (r.ok) text = await r.text(); } catch(e) {}
-    if (!text) { try { const r = await fetch(CORS_PRIMARY + encodeURIComponent(url), { signal: AbortSignal.timeout(5000) }); if (r.ok) text = await r.text(); } catch(e) {} }
-    if (text && (text.includes('<rss') || text.includes('<feed') || text.includes('<?xml'))) return url;
+    try {
+      // Skip if same domain as podcast feed (iTunes is the authoritative podcast source)
+      if (podcastDomain && new URL(url).hostname === podcastDomain) return null;
+
+      let text = null;
+      try { const r = await fetch(url, { signal: AbortSignal.timeout(4000) }); if (r.ok) text = await r.text(); } catch(e) {}
+      if (!text) { try { const r = await fetch(CORS_PRIMARY + encodeURIComponent(url), { signal: AbortSignal.timeout(5000) }); if (r.ok) text = await r.text(); } catch(e) {} }
+
+      // Must be RSS/Atom and must NOT be a podcast feed (no iTunes namespace)
+      if (text &&
+          (text.includes('<rss') || text.includes('<feed') || text.includes('<?xml')) &&
+          !text.includes('<itunes:') && !text.includes('xmlns:itunes')) {
+        return url;
+      }
+    } catch(e) {}
     return null;
   });
   const results = await Promise.all(checks);
@@ -1646,16 +1660,18 @@ async function searchPersonByName() {
   area.innerHTML = '<div class="suggest-status">Searching podcasts, YouTube, blogs…</div>';
   _suggestions = [];
 
-  // ── Run all three sources in parallel ──
-  const [itunesData, ytId, blogUrl] = await Promise.all([
-    // iTunes podcasts
-    fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=podcast&entity=podcast&limit=6`,
-      { signal: AbortSignal.timeout(8000) })
-      .then(r => r.json()).catch(() => ({ results: [] })),
-    // YouTube handle
+  // ── iTunes first (podcast source of truth), then YouTube + blog in parallel ──
+  const itunesData = await fetch(
+    `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=podcast&entity=podcast&limit=6`,
+    { signal: AbortSignal.timeout(8000) }
+  ).then(r => r.json()).catch(() => ({ results: [] }));
+
+  // Use the top iTunes podcast URL to prevent _findBlog returning the same domain
+  const topPodcastUrl = itunesData.results.find(r => r.feedUrl)?.feedUrl || '';
+
+  const [ytId, blogUrl] = await Promise.all([
     _findYouTube(query),
-    // Blog / Substack
-    _findBlog(query),
+    _findBlog(query, topPodcastUrl),
   ]);
 
   itunesData.results.forEach(r => {
