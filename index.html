@@ -1176,45 +1176,15 @@ function handleModalTagKeydown(e) {
 function cleanPodcastDesc(text) {
   if (!text) return { clean: '', full: '', hasAds: false };
 
-  // Hard markers that definitively end the real content
-  const FOOTER_RX = /learn more about your ad choices|podcastchoices\.com|advertisechoices\.com/i;
+  // Search for the first occurrence of a sponsor/ad pattern directly in the
+  // raw text. Works even when the whole description is a single unbroken block.
+  const SPONSOR_RX = /\s(?:Go to https?:\/\/|Visit https?:\/\/|Download the app\b|use code\s+\w+\s+(?:at checkout|to get)|(?:Perplexity|AG1|Athletic Greens|BetterHelp|Squarespace|NordVPN|Surfshark|ExpressVPN|ZipRecruiter|HelloFresh|Rocket ?Money)\s*:|Learn more about your ad choices|podcastchoices\.com|advertisechoices\.com)/i;
 
-  // Sentence-level ad markers (lines / sentences that start sponsor blocks)
-  const AD_SENTENCE_RX = /^(go to https?:|visit https?:|download the app|use code\s+\w|sign up at https?:|get \d+%? (off|months|free)|sponsored by\b)/i;
+  const match = SPONSOR_RX.exec(text);
+  if (!match) return { clean: text, full: text, hasAds: false };
 
-  // Split into pseudo-sentences on ". " followed by capital letter, or on \n
-  const sentences = text
-    .replace(/\. ([A-Z])/g, '.\n$1')  // break on sentence boundaries
-    .split(/\n+/)
-    .map(s => s.trim())
-    .filter(Boolean);
-
-  let cutAt = sentences.length; // default: show everything
-
-  for (let i = 0; i < sentences.length; i++) {
-    if (FOOTER_RX.test(sentences[i])) {
-      // Found the footer — work backward to find where sponsors started
-      cutAt = i;
-      for (let j = i - 1; j >= 0 && j >= i - 6; j--) {
-        if (AD_SENTENCE_RX.test(sentences[j]) ||
-            /https?:\/\/[^\s]+\/\w{3,}$/.test(sentences[j].trim())) {
-          cutAt = j;
-        } else {
-          break;
-        }
-      }
-      break;
-    }
-    // Also cut at the first clear sponsor sentence (even without a footer)
-    if (i > 0 && AD_SENTENCE_RX.test(sentences[i])) {
-      cutAt = i;
-      break;
-    }
-  }
-
-  const clean = sentences.slice(0, cutAt).join(' ').trim();
-  const full  = sentences.join(' ').trim();
-  return { clean: clean || full, full, hasAds: cutAt < sentences.length };
+  const clean = text.slice(0, match.index).trim();
+  return { clean: clean || text, full: text, hasAds: true };
 }
 
 function renderDesc(text, platform) {
