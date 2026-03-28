@@ -1230,16 +1230,15 @@ function renderDesc(text, platform) {
   const cleanHtml = toHtml(clean);
   if (!hasAds) return `<div class="modal-desc">${cleanHtml}</div>`;
 
-  // Show clean version + a toggle to reveal the full text (ads included)
-  const fullHtml = toHtml(full);
+  // Store full HTML in a module-level variable to avoid embedding it in an
+  // HTML attribute (quotes in the content would break the attribute).
+  renderDesc._fullDesc = toHtml(full);
   return `
     <div class="modal-desc" id="modalDescBody">${cleanHtml}</div>
-    <button onclick="
-      document.getElementById('modalDescBody').innerHTML=${JSON.stringify(fullHtml)};
-      this.style.display='none';
-    " style="background:none;border:none;cursor:pointer;font-family:'JetBrains Mono',monospace;
-             font-size:10px;color:var(--muted);padding:4px 0;text-decoration:underline;
-             text-underline-offset:3px;margin-top:2px">
+    <button onclick="document.getElementById('modalDescBody').innerHTML=renderDesc._fullDesc;this.style.display='none'"
+            style="background:none;border:none;cursor:pointer;font-family:'JetBrains Mono',monospace;
+                   font-size:10px;color:var(--muted);padding:4px 0;text-decoration:underline;
+                   text-underline-offset:3px;margin-top:2px">
       Show full description (includes sponsors)
     </button>`;
 }
