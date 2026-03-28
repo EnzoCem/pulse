@@ -1170,6 +1170,66 @@ function handleModalTagKeydown(e) {
   }
 }
 
+// ── YOUTUBE VIDEO LOOKUP FOR PODCAST ENTRIES ──
+// Normalise a title for fuzzy comparison (strip episode numbers, punctuation)
+function _normTitle(t) {
+  return t.toLowerCase()
+    .replace(/#\d+\s*[-–]\s*/g, '')   // "#2475 - "
+    .replace(/\|.*$/,'')              // everything after " | "
+    .replace(/[^\w\s]/g,' ')
+    .replace(/\s+/g,' ').trim();
+}
+
+// Word-overlap score between two normalised titles (0–1)
+function _titleOverlap(a, b) {
+  const wa = new Set(a.split(' ').filter(w => w.length > 3));
+  const wb = new Set(b.split(' ').filter(w => w.length > 3));
+  if (!wa.size || !wb.size) return 0;
+  const shared = [...wa].filter(w => wb.has(w)).length;
+  return shared / Math.min(wa.size, wb.size);
+}
+
+// Returns a YouTube watch URL for a podcast entry, or null if not found.
+// Step 1: match against already-fetched YouTube entries for the same person.
+// Step 2: scrape YouTube search results via CORS proxy.
+async function findYouTubeForPodcast(person, entry) {
+  const epNorm = _normTitle(entry.title);
+
+  // Step 1 — check existing YouTube entries (free, instant)
+  const ytEntries = (person.entries || []).filter(e => e.platform === 'youtube' && e.link);
+  for (const yt of ytEntries) {
+    if (_titleOverlap(epNorm, _normTitle(yt.title)) >= 0.5) return yt.link;
+  }
+
+  // Step 2 — scrape YouTube search
+  const query = `${person.name} ${entry.title}`;
+  try {
+    const url  = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+    const resp = await fetch(CORS_PRIMARY + encodeURIComponent(url),
+      { signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) throw new Error('fetch failed');
+    const html = await resp.text();
+
+    // If person has a YouTube channel, prefer videos from that channel
+    const channelId = person.feeds?.youtube || '';
+    if (channelId) {
+      // Look for videoId appearing near the person's channel ID in the JSON blob
+      const channelIdx = html.indexOf(channelId);
+      if (channelIdx > -1) {
+        const nearby = html.slice(Math.max(0, channelIdx - 2000), channelIdx + 2000);
+        const m = nearby.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
+        if (m) return `https://www.youtube.com/watch?v=${m[1]}`;
+      }
+    }
+    // Fallback — just grab the very first video ID in the results
+    const m = html.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
+    if (m) return `https://www.youtube.com/watch?v=${m[1]}`;
+  } catch(e) {
+    console.warn('YouTube lookup failed:', e.message);
+  }
+  return null;
+}
+
 // ── YOUTUBE TRANSCRIPT ──
 function extractYouTubeId(url) {
   const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
@@ -2248,16 +2308,37 @@ function openEntry(entry) {
     <div id="transcriptArea"></div>`;
 
   const modalLink = document.getElementById('modalLink');
-  if (entry.link) {
-    modalLink.href              = entry.link;
+  function _setModalLink(url, label, title) {
+    modalLink.href              = url;
+    modalLink.textContent       = label;
     modalLink.style.opacity     = '';
     modalLink.style.pointerEvents = '';
-    modalLink.title             = '';
-  } else {
+    modalLink.title             = title || '';
+  }
+  function _disableModalLink(msg) {
     modalLink.href              = '#';
+    modalLink.textContent       = 'Open →';
     modalLink.style.opacity     = '0.35';
     modalLink.style.pointerEvents = 'none';
-    modalLink.title             = 'No URL available for this entry';
+    modalLink.title             = msg || '';
+  }
+
+  if (entry.link) {
+    _setModalLink(entry.link, 'Open →', '');
+  } else if (entry.platform === 'podcast') {
+    // No link in the RSS — search YouTube automatically in the background
+    _disableModalLink('Searching YouTube…');
+    modalLink.textContent = '🔍 Searching…';
+    findYouTubeForPodcast(person, entry).then(ytUrl => {
+      if (ytUrl) {
+        _setModalLink(ytUrl, '▶ Watch on YouTube', 'Found matching YouTube video');
+      } else {
+        _disableModalLink('No URL found — episode may be Spotify-exclusive');
+        modalLink.textContent = 'Open →';
+      }
+    });
+  } else {
+    _disableModalLink('No URL available for this entry');
   }
   // render any existing tags for this entry
   renderModalTags();
