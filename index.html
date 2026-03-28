@@ -1170,6 +1170,80 @@ function handleModalTagKeydown(e) {
   }
 }
 
+// ── PODCAST DESCRIPTION CLEANER ──
+// Splits description into { clean, full, hasAds } by detecting where sponsor
+// copy begins. Works by finding known ad-footer markers and walking backward.
+function cleanPodcastDesc(text) {
+  if (!text) return { clean: '', full: '', hasAds: false };
+
+  // Hard markers that definitively end the real content
+  const FOOTER_RX = /learn more about your ad choices|podcastchoices\.com|advertisechoices\.com/i;
+
+  // Sentence-level ad markers (lines / sentences that start sponsor blocks)
+  const AD_SENTENCE_RX = /^(go to https?:|visit https?:|download the app|use code\s+\w|sign up at https?:|get \d+%? (off|months|free)|sponsored by\b)/i;
+
+  // Split into pseudo-sentences on ". " followed by capital letter, or on \n
+  const sentences = text
+    .replace(/\. ([A-Z])/g, '.\n$1')  // break on sentence boundaries
+    .split(/\n+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  let cutAt = sentences.length; // default: show everything
+
+  for (let i = 0; i < sentences.length; i++) {
+    if (FOOTER_RX.test(sentences[i])) {
+      // Found the footer — work backward to find where sponsors started
+      cutAt = i;
+      for (let j = i - 1; j >= 0 && j >= i - 6; j--) {
+        if (AD_SENTENCE_RX.test(sentences[j]) ||
+            /https?:\/\/[^\s]+\/\w{3,}$/.test(sentences[j].trim())) {
+          cutAt = j;
+        } else {
+          break;
+        }
+      }
+      break;
+    }
+    // Also cut at the first clear sponsor sentence (even without a footer)
+    if (i > 0 && AD_SENTENCE_RX.test(sentences[i])) {
+      cutAt = i;
+      break;
+    }
+  }
+
+  const clean = sentences.slice(0, cutAt).join(' ').trim();
+  const full  = sentences.join(' ').trim();
+  return { clean: clean || full, full, hasAds: cutAt < sentences.length };
+}
+
+function renderDesc(text, platform) {
+  if (!text) return '';
+  const { clean, full, hasAds } = (platform === 'podcast')
+    ? cleanPodcastDesc(text)
+    : { clean: text, full: text, hasAds: false };
+
+  const toHtml = str => str.split(/\n{2,}/)
+    .map(p => `<p>${escHtml(p.trim()).replace(/\n/g,'<br>')}</p>`)
+    .join('');
+
+  const cleanHtml = toHtml(clean);
+  if (!hasAds) return `<div class="modal-desc">${cleanHtml}</div>`;
+
+  // Show clean version + a toggle to reveal the full text (ads included)
+  const fullHtml = toHtml(full);
+  return `
+    <div class="modal-desc" id="modalDescBody">${cleanHtml}</div>
+    <button onclick="
+      document.getElementById('modalDescBody').innerHTML=${JSON.stringify(fullHtml)};
+      this.style.display='none';
+    " style="background:none;border:none;cursor:pointer;font-family:'JetBrains Mono',monospace;
+             font-size:10px;color:var(--muted);padding:4px 0;text-decoration:underline;
+             text-underline-offset:3px;margin-top:2px">
+      Show full description (includes sponsors)
+    </button>`;
+}
+
 // ── YOUTUBE VIDEO LOOKUP FOR PODCAST ENTRIES ──
 // Normalise a title for fuzzy comparison (strip episode numbers, punctuation)
 function _normTitle(t) {
@@ -2280,12 +2354,7 @@ function openEntry(entry) {
   const pl     = PLATFORMS[entry.platform];
   const person = persons.find(p => p.id === entry.personId) || {};
 
-  // Render description with paragraph breaks preserved
-  const descHtml = entry.desc
-    ? entry.desc.split(/\n{2,}/)
-        .map(p => `<p>${escHtml(p.trim()).replace(/\n/g,'<br>')}</p>`)
-        .join('')
-    : '';
+  const descHtml = renderDesc(entry.desc, entry.platform);
 
   document.getElementById('modalContent').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
@@ -2296,7 +2365,7 @@ function openEntry(entry) {
     </div>
     <div class="modal-title">${escHtml(entry.title)}</div>
     <div class="modal-meta">${formatFullDate(entry.date)}</div>
-    ${descHtml ? `<div class="modal-desc">${descHtml}</div>` : ''}
+    ${descHtml || ''}
     <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
       <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Topics</div>
       <div class="tag-input-wrap" onclick="document.getElementById('met-input').focus()">
