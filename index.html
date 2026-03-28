@@ -1771,12 +1771,33 @@ async function resolveYouTubeChannelId(raw) {
   return raw;
 }
 
-async function _findYouTube(name) {
-  const slugs = [name.toLowerCase().replace(/\s+/g,''), name.toLowerCase().replace(/\s+/g,'-')];
+// Try to find a YouTube channel ID for a person/podcast by name.
+// Tries RSS handle resolution first, then falls back to scraping YouTube search.
+async function _findYouTube(name, podcastName = '') {
+  // Build a list of handle candidates from person name and podcast name
+  const toSlugs = s => [s.toLowerCase().replace(/\s+/g,''), s.toLowerCase().replace(/\s+/g,'-')];
+  const slugs = [...new Set([...toSlugs(name), ...(podcastName ? toSlugs(podcastName) : [])])];
+
+  // Step 1 — try each handle via the YouTube RSS ?user= endpoint
   for (const slug of slugs) {
     const id = await resolveYouTubeChannelId('@' + slug);
-    if (id && /^UC/.test(id)) return id;
+    if (id && /^UC[a-zA-Z0-9_-]{21,22}$/.test(id)) return id;
   }
+
+  // Step 2 — scrape YouTube search results page via codetabs proxy
+  // The search page embeds structured JSON containing channel IDs
+  const query = podcastName || name;
+  try {
+    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAg%253D%253D`; // filter: channels
+    const resp = await fetch(CORS_FALLBACK2 + encodeURIComponent(searchUrl), { signal: AbortSignal.timeout(8000) });
+    if (resp.ok) {
+      const html = await resp.text();
+      // YouTube embeds {"channelId":"UC..."} in its initial data JSON
+      const m = html.match(/"channelId":"(UC[a-zA-Z0-9_-]{21,22})"/);
+      if (m) return m[1];
+    }
+  } catch(e) { console.warn('YouTube search scrape failed:', e.message); }
+
   return null;
 }
 
@@ -1847,8 +1868,9 @@ async function searchPersonByName() {
   // Use the top iTunes podcast URL to prevent _findBlog returning the same domain
   const topPodcastUrl = itunesData.results.find(r => r.feedUrl)?.feedUrl || '';
 
+  const topPodcastName = itunesData.results.find(r => r.collectionName)?.collectionName || '';
   const [ytId, blogUrl] = await Promise.all([
-    _findYouTube(query),
+    _findYouTube(query, topPodcastName),
     _findBlog(query, topPodcastUrl),
   ]);
 
