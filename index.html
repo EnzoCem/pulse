@@ -2154,7 +2154,17 @@ async function fetchRSS(url, platform, personId) {
     items.forEach((item, i) => {
       if (i >= 10) return;
       const title   = getText(item, 'title'); if (!title) return;
-      const link    = getText(item, 'link') || item.querySelector('link')?.getAttribute('href') || '';
+      // Link priority: <link> → Atom <link href> → <guid isPermaLink> → <enclosure url>
+      const guidEl      = item.querySelector('guid');
+      const guidUrl     = (guidEl?.getAttribute('isPermaLink') !== 'false' &&
+                           guidEl?.textContent?.trim().startsWith('http'))
+                          ? guidEl.textContent.trim() : '';
+      const enclosureUrl = item.querySelector('enclosure')?.getAttribute('url') || '';
+      const link = getText(item, 'link')
+                || item.querySelector('link')?.getAttribute('href')
+                || guidUrl
+                || enclosureUrl
+                || '';
       const rawDesc = getText(item, 'description') || getText(item, 'summary') || getText(item, 'content') || '';
       const dateStr = getText(item, 'pubDate') || getText(item, 'published') || getText(item, 'updated') || '';
       const id      = `${personId}-${platform}-${link||title}`.replace(/\s/g,'').slice(0,80);
@@ -2237,7 +2247,18 @@ function openEntry(entry) {
     </div>
     <div id="transcriptArea"></div>`;
 
-  document.getElementById('modalLink').href = entry.link || '#';
+  const modalLink = document.getElementById('modalLink');
+  if (entry.link) {
+    modalLink.href              = entry.link;
+    modalLink.style.opacity     = '';
+    modalLink.style.pointerEvents = '';
+    modalLink.title             = '';
+  } else {
+    modalLink.href              = '#';
+    modalLink.style.opacity     = '0.35';
+    modalLink.style.pointerEvents = 'none';
+    modalLink.title             = 'No URL available for this entry';
+  }
   // render any existing tags for this entry
   renderModalTags();
 
