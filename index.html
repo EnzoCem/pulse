@@ -985,6 +985,15 @@ const PLATFORMS = {
   blog:    { label: 'Blog',    color: 'var(--blog)',    emoji: '✍' },
 };
 
+// If a person has a YouTube channel but no podcast RSS, their YouTube entries
+// are the podcast — show them with podcast styling instead of YouTube styling.
+function getPlatform(entry, person) {
+  if (entry.platform === 'youtube' && person?.feeds?.youtube && !person?.feeds?.podcast) {
+    return PLATFORMS.podcast;
+  }
+  return PLATFORMS[entry.platform];
+}
+
 // ── CORS PROXIES ──
 // Primary: corsproxy.io (returns raw content). Fallback: allorigins.win /raw (also raw content).
 const CORS_PRIMARY  = 'https://corsproxy.io/?';
@@ -1543,7 +1552,7 @@ function renderPersonDetail() {
   const entryListHtml = entries.length === 0
     ? `<div style="padding:24px 0;color:var(--muted);font-size:12px;text-align:center">No entries — click Refresh to fetch</div>`
     : entries.map(entry => {
-        const pl   = PLATFORMS[entry.platform];
+        const pl   = getPlatform(entry, person);
         const eTags = (entryTags[entry.id] || []).map(t => {
           const c = tagColor(t);
           return `<span class="tag-chip" style="background:${c}22;color:${c};font-size:9px;padding:1px 5px">${escHtml(t)}</span>`;
@@ -1993,7 +2002,7 @@ function renderPersonCard(person, prepend = false, delay = 0) {
   } else {
     entriesHTML = entries.slice(0, 4).map(entry => {
       const isNew  = !seenIds.has(entry.id);
-      const pl     = PLATFORMS[entry.platform];
+      const pl     = getPlatform(entry, person);
       const eTags  = entryTags[entry.id] || [];
       const eTagsHtml = eTags.map(t => {
         const c = tagColor(t);
@@ -2090,7 +2099,7 @@ function renderTimeline() {
       <div class="timeline-date-label">${date}</div>
       ${items.map(entry => {
         const person = persons.find(p => p.id === entry.personId) || {};
-        const pl     = PLATFORMS[entry.platform];
+        const pl     = getPlatform(entry, person);
         const isNew  = !seenIds.has(entry.id);
         const av     = person.avatar
           ? `<img src="${person.avatar}" alt="" onerror="this.innerHTML='${getInitials(person.name||'?')}'"/>`
@@ -2306,8 +2315,8 @@ function openEntry(entry) {
   _currentModalEntry = entry;
   saveState();
 
-  const pl     = PLATFORMS[entry.platform];
   const person = persons.find(p => p.id === entry.personId) || {};
+  const pl     = getPlatform(entry, person);
 
   const descHtml = renderDesc(entry.desc, entry.platform);
 
