@@ -2361,15 +2361,34 @@ function openEntry(entry) {
     modalLink.title             = msg || '';
   }
 
-  if (entry.link) {
+  const hasYouTubeChannel = !!(person.feeds?.youtube);
+
+  if (entry.platform === 'podcast' && hasYouTubeChannel) {
+    // Person has a YouTube channel — always prefer YouTube over the RSS link.
+    // Show RSS link immediately as fallback while the search runs.
+    if (entry.link) {
+      _setModalLink(entry.link, 'Open →', '');
+    } else {
+      _disableModalLink('Searching YouTube…');
+      modalLink.textContent = '🔍 Searching…';
+    }
+    findYouTubeForPodcast(person, entry).then(ytUrl => {
+      if (ytUrl) {
+        _setModalLink(ytUrl, '▶ Watch on YouTube', '');
+      } else if (!entry.link) {
+        _disableModalLink('No URL found — episode may be Spotify-exclusive');
+        modalLink.textContent = 'Open →';
+      }
+      // If no YouTube found but RSS link exists, leave the RSS link in place
+    });
+  } else if (entry.link) {
     _setModalLink(entry.link, 'Open →', '');
   } else if (entry.platform === 'podcast') {
-    // No link in the RSS — search YouTube automatically in the background
     _disableModalLink('Searching YouTube…');
     modalLink.textContent = '🔍 Searching…';
     findYouTubeForPodcast(person, entry).then(ytUrl => {
       if (ytUrl) {
-        _setModalLink(ytUrl, '▶ Watch on YouTube', 'Found matching YouTube video');
+        _setModalLink(ytUrl, '▶ Watch on YouTube', '');
       } else {
         _disableModalLink('No URL found — episode may be Spotify-exclusive');
         modalLink.textContent = 'Open →';
