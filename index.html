@@ -1320,12 +1320,46 @@ function loadState() {
     persons = saved ? JSON.parse(saved) : DEMO_PERSONS;
     // Migrate: ensure every person has required fields,
     // and backfill tags from DEMO_PERSONS for any demo person that has none yet
-    const demoTagMap = Object.fromEntries(DEMO_PERSONS.map(p => [p.id, p.tags || []]));
+    const demoMap = Object.fromEntries(DEMO_PERSONS.map(p => [p.id, p]));
     persons = persons.map(p => {
-      const base = { tags: [], fetchErrors: [], ...p };
-      if (base.tags.length === 0 && demoTagMap[p.id]?.length) base.tags = demoTagMap[p.id];
+      const base  = { tags: [], fetchErrors: [], ...p };
+      const demo  = demoMap[p.id];
+      // Backfill tags for demo persons that have none
+      if (base.tags.length === 0 && demo?.tags?.length) base.tags = demo.tags;
       return base;
     });
+
+    // One-time feed migration (v2): reset stale demo-person feeds to current
+    // DEMO_PERSONS values so wrong URLs picked up during early development are cleared.
+    if (!localStorage.getItem('pw-feed-migration-v2')) {
+      persons = persons.map(p => {
+        const demo = demoMap[p.id];
+        if (!demo) return p;               // user-added person — leave untouched
+        // For each feed slot, if DEMO_PERSONS intentionally has it empty ('') and
+        // the stored URL's hostname is NOT a known-good host, clear it.
+        const knownGoodHosts = {
+          podcast: demo.feeds.podcast ? [new URL(demo.feeds.podcast).hostname] : [],
+          blog:    demo.feeds.blog    ? [new URL(demo.feeds.blog).hostname]    : [],
+        };
+        const fixedFeeds = { ...p.feeds };
+        for (const slot of ['podcast', 'blog']) {
+          if (!demo.feeds[slot] && fixedFeeds[slot]) {
+            // DEMO says empty — only keep it if user explicitly entered a value
+            // we can't know that, so clear it (they can re-add)
+            fixedFeeds[slot] = '';
+          } else if (demo.feeds[slot] && fixedFeeds[slot] &&
+                     knownGoodHosts[slot].length &&
+                     !knownGoodHosts[slot].includes(new URL(fixedFeeds[slot]).hostname)) {
+            // DEMO has a known URL but stored URL is on a different host — reset
+            fixedFeeds[slot] = demo.feeds[slot];
+          }
+        }
+        return { ...p, feeds: fixedFeeds };
+      });
+      localStorage.setItem('pw-feed-migration-v2', '1');
+      // Save immediately so the stale URLs don't come back on next load
+      localStorage.setItem('pw-persons', JSON.stringify(persons.map(p => ({ ...p, loading: false }))));
+    }
     const savedSeen = localStorage.getItem('pw-seen');
     if (savedSeen) seenIds = new Set(JSON.parse(savedSeen));
     const savedET = localStorage.getItem('pw-entry-tags');
