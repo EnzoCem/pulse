@@ -3604,16 +3604,30 @@ function _looksLikeRssUrl(url) {
 // Fetch books for a person via the free Google Books API (no key required).
 // query defaults to the person's name if not overridden in feeds.books.
 async function fetchBooks(query, personId) {
-  const url = `https://www.googleapis.com/books/v1/volumes?q=inauthor:${encodeURIComponent('"' + query + '"')}&maxResults=20&orderBy=newest&printType=books&langRestrict=en`;
+  // Fetch more than we need — we'll filter down to actual authored books client-side.
+  const url = `https://www.googleapis.com/books/v1/volumes?q=inauthor:${encodeURIComponent('"' + query + '"')}&maxResults=40&orderBy=relevance&printType=books&langRestrict=en`;
   try {
     const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!resp.ok) return [];
     const data = await resp.json();
     if (!data.items) return [];
-    // Keep only English editions, then deduplicate by title (handles multiple English formats)
+
+    // The inauthor: query matches foreword writers, contributors, etc. too.
+    // Filter to only books where the query name appears in the volumeInfo.authors list
+    // (the actual author field, not editorial mentions). Match on significant name words
+    // so "Tim Ferriss" matches "Timothy Ferriss" etc.
+    const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    const isActualAuthor = (volumeInfo) => {
+      const authors = (volumeInfo?.authors || []).map(a => a.toLowerCase());
+      if (!authors.length) return false;
+      return authors.some(a => queryWords.some(word => a.includes(word)));
+    };
+
+    // Keep only English editions by actual author, then deduplicate by title
     const seen = new Set();
     const unique = data.items.filter(item => {
       if (item.volumeInfo?.language !== 'en') return false;
+      if (!isActualAuthor(item.volumeInfo)) return false;
       const key = (item.volumeInfo?.title || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40);
       if (!key || seen.has(key)) return false;
       seen.add(key);
