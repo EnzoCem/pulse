@@ -970,7 +970,9 @@
     <div class="modal-actions">
       <a   id="transcriptBtn"   href="#" target="_blank" rel="noopener" class="btn btn-ghost" style="display:none">🔍 Find Transcript</a>
       <button id="ytTranscriptBtn" class="btn btn-ghost" style="display:none" onclick="loadYouTubeTranscript()">📄 Load Transcript</button>
-      <a id="modalLink" href="#" target="_blank" rel="noopener" class="btn btn-primary">Open →</a>
+      <a id="modalLink"      href="#" target="_blank" rel="noopener" class="btn btn-primary" style="display:none">Open →</a>
+      <a id="modalSoundLink" href="#" target="_blank" rel="noopener" class="btn btn-ghost"   style="display:none">🔊 Open Sound</a>
+      <a id="modalVideoLink" href="#" target="_blank" rel="noopener" class="btn btn-primary" style="display:none">▶ Open Video</a>
       <button class="btn btn-ghost" onclick="closeModal()">Close</button>
     </div>
   </div>
@@ -2428,57 +2430,59 @@ function openEntry(entry) {
     </div>
     <div id="transcriptArea"></div>`;
 
-  const modalLink = document.getElementById('modalLink');
-  function _setModalLink(url, label, title) {
-    modalLink.href              = url;
-    modalLink.textContent       = label;
-    modalLink.style.opacity     = '';
-    modalLink.style.pointerEvents = '';
-    modalLink.title             = title || '';
+  const elOpen  = document.getElementById('modalLink');
+  const elSound = document.getElementById('modalSoundLink');
+  const elVideo = document.getElementById('modalVideoLink');
+
+  // Hide all three, then show only what's relevant
+  [elOpen, elSound, elVideo].forEach(el => { el.style.display = 'none'; el.removeAttribute('href'); });
+
+  function _showOpen(url) {            // single generic Open button (non-podcast)
+    elOpen.href = url; elOpen.textContent = 'Open →'; elOpen.style.display = '';
   }
-  function _disableModalLink(msg) {
-    modalLink.href              = '#';
-    modalLink.textContent       = 'Open →';
-    modalLink.style.opacity     = '0.35';
-    modalLink.style.pointerEvents = 'none';
-    modalLink.title             = msg || '';
+  function _showSound(url) {           // 🔊 Open Sound — podcast RSS / Spotify link
+    if (!url) return;
+    elSound.href = url; elSound.style.display = '';
+  }
+  function _showVideo(url, label) {    // ▶ Open Video — YouTube link
+    elVideo.href = url; elVideo.textContent = label || '▶ Open Video';
+    elVideo.style.display = '';
+  }
+  function _showVideoSearching() {     // placeholder while YouTube lookup runs
+    elVideo.removeAttribute('href');
+    elVideo.textContent = '🔍 Finding video…';
+    elVideo.style.display = '';
+    elVideo.style.opacity = '0.5';
+    elVideo.style.pointerEvents = 'none';
+  }
+  function _videoFound(url) {
+    elVideo.href = url; elVideo.textContent = '▶ Open Video';
+    elVideo.style.opacity = ''; elVideo.style.pointerEvents = '';
+  }
+  function _videoNotFound() {
+    elVideo.style.display = 'none';   // just hide it — Sound button is still there
   }
 
+  const isPodcast        = entry.platform === 'podcast';
   const hasYouTubeChannel = !!(person.feeds?.youtube);
 
-  if (entry.platform === 'podcast' && hasYouTubeChannel) {
-    // Person has a YouTube channel — always prefer YouTube over the RSS link.
-    // Show RSS link immediately as fallback while the search runs.
-    if (entry.link) {
-      _setModalLink(entry.link, 'Open →', '');
-    } else {
-      _disableModalLink('Searching YouTube…');
-      modalLink.textContent = '🔍 Searching…';
-    }
+  if (isPodcast) {
+    // Always show Sound button if there's an RSS link
+    _showSound(entry.link);
+
+    // Show Video button — search in background
+    _showVideoSearching();
     findYouTubeForPodcast(person, entry).then(ytUrl => {
-      if (ytUrl) {
-        _setModalLink(ytUrl, '▶ Watch on YouTube', '');
-      } else if (!entry.link) {
-        _disableModalLink('No URL found — episode may be Spotify-exclusive');
-        modalLink.textContent = 'Open →';
-      }
-      // If no YouTube found but RSS link exists, leave the RSS link in place
+      if (ytUrl) _videoFound(ytUrl);
+      else       _videoNotFound();
     });
   } else if (entry.link) {
-    _setModalLink(entry.link, 'Open →', '');
-  } else if (entry.platform === 'podcast') {
-    _disableModalLink('Searching YouTube…');
-    modalLink.textContent = '🔍 Searching…';
-    findYouTubeForPodcast(person, entry).then(ytUrl => {
-      if (ytUrl) {
-        _setModalLink(ytUrl, '▶ Watch on YouTube', '');
-      } else {
-        _disableModalLink('No URL found — episode may be Spotify-exclusive');
-        modalLink.textContent = 'Open →';
-      }
-    });
+    _showOpen(entry.link);
   } else {
-    _disableModalLink('No URL available for this entry');
+    elOpen.textContent = 'No URL';
+    elOpen.style.opacity = '0.35';
+    elOpen.style.pointerEvents = 'none';
+    elOpen.style.display = '';
   }
   // render any existing tags for this entry
   renderModalTags();
