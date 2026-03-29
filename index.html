@@ -2284,7 +2284,10 @@ async function fetchPerson(person) {
     newEntries.push(...entries);
   }
 
-  if (person.feeds.youtube)
+  // Only fetch YouTube channel RSS when there is no podcast RSS.
+  // When a podcast RSS exists, episodes come from there; the YouTube channel ID
+  // is only used to help find video links (via title search), not to source content.
+  if (person.feeds.youtube && !person.feeds.podcast)
     await pull(`https://www.youtube.com/feeds/videos.xml?channel_id=${person.feeds.youtube}`, 'youtube');
   if (person.feeds.podcast) await pull(person.feeds.podcast, 'podcast');
   if (person.feeds.blog)    await pull(person.feeds.blog,    'blog');
