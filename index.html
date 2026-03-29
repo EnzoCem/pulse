@@ -1050,7 +1050,7 @@
         <div class="platform-badge" style="background:#0f1e2a; font-size:16px;">𝕏</div>
         <div class="form-row" style="flex:1">
           <label>X / Twitter RSS (via rss.app)</label>
-          <input type="text" id="f-twitter" placeholder="https://rss.app/feeds/...">
+          <input type="text" id="f-twitter" placeholder="https://rss.app/feeds/… (rss.app RSS URL)">
         </div>
       </div>
       <div class="feed-row">
@@ -1267,13 +1267,6 @@ const CORS_FALLBACK  = 'https://api.allorigins.win/raw?url=';
 const CORS_FALLBACK2 = 'https://api.codetabs.com/v1/proxy?quest=';
 
 // Free Nitter instances for X/Twitter RSS (tried in order; first working one wins)
-const NITTER_INSTANCES = [
-  'https://nitter.poast.org',
-  'https://nitter.privacydev.net',
-  'https://nitter.net',
-  'https://lightbrd.com',
-  'https://nitter.1d4.us',
-];
 
 // ── STATE ──
 let persons      = [];
@@ -1882,14 +1875,14 @@ function renderPersonDetail() {
   const feedRows = [
     { key: 'podcast', label: isSourcePerson ? '📰 Main RSS Feed' : '🎙 Podcast', ph: isSourcePerson ? 'https://bigthink.com/feed/' : 'RSS feed URL' },
     { key: 'youtube', label: '▶ YouTube',      ph: '@handle, URL, or UC… ID' },
-    { key: 'twitter', label: '🐦 X / Twitter', ph: '@username  or  x.com/username  or  rss.app URL' },
+    { key: 'twitter', label: '🐦 X / Twitter', ph: 'rss.app RSS URL (https://rss.app/feeds/...)' },
     { key: 'blog',    label: '✍ Blog',         ph: 'RSS or Atom feed URL' },
     { key: 'books',   label: '📚 Books',        ph: 'Search query (blank = auto from name)' },
   ].map(f => {
     const val = person.feeds[f.key] || '';
     // Red ⚠ = last fetch actually failed; Amber ⚠ = URL doesn't look like RSS at all
     const fetchFailed = failedFeeds.includes(f.key);
-    const notRss      = val && f.key === 'twitter' && !_looksLikeRssUrl(val) && !_extractTwitterHandle(val);
+    const notRss      = val && f.key === 'twitter' && !_looksLikeRssUrl(val);
     const indicator   = fetchFailed
       ? `<span class="detail-feed-error" title="Last fetch failed — check the URL">⚠</span>`
       : notRss
@@ -2902,14 +2895,9 @@ async function fetchPerson(person) {
   const booksQuery = (person.feeds.books || '').trim() || person.name;
   tasks.push(fetchBooks(booksQuery, person.id).then(e => newEntries.push(...e)));
 
-  // Twitter: full RSS URL or bare handle via Nitter
+  // Twitter: only fetch if it looks like an RSS feed URL (e.g. rss.app)
   if (person.feeds.twitter && _looksLikeRssUrl(person.feeds.twitter)) {
-    const handle = _extractTwitterHandle(person.feeds.twitter);
-    if (handle) {
-      tasks.push(fetchTwitterHandle(handle, 'twitter', person.id).then(e => newEntries.push(...e)));
-    } else {
-      tasks.push(pull(person.feeds.twitter, 'twitter'));
-    }
+    tasks.push(pull(person.feeds.twitter, 'twitter'));
   }
 
   // Run all feeds in parallel, but enforce a 30s hard cap on the whole fetch
@@ -3602,21 +3590,14 @@ const hexAlpha   = p => ({ podcast:'#2a1510', youtube:'#2a1010', twitter:'#101a2
 // Used to skip bad twitter field values silently rather than counting them as fetch failures.
 function _looksLikeRssUrl(url) {
   if (!url) return false;
-  // Accept bare @username or plain username as a Twitter handle (resolved via Nitter)
-  if (/^@?[A-Za-z0-9_]{1,50}$/.test(url.trim())) return true;
   try {
     const u    = new URL(url);
     const host = u.hostname.replace(/^www\./, '');
-    // Plain x.com / twitter.com profile — treat as handle (resolved via Nitter)
-    if (/^(x|twitter)\.com$/.test(host)) {
-      const handle = u.pathname.replace(/^\//, '').split('/')[0];
-      return !!handle && !/^(home|explore|notifications|messages|settings)$/i.test(handle);
-    }
-    // Plain instagram / linkedin profile pages
-    if (/^(instagram|linkedin|facebook|tiktok)\.com$/.test(host)) {
+    // Plain x.com / twitter.com / instagram / etc. profile pages — not RSS
+    if (/^(x|twitter|instagram|linkedin|facebook|tiktok)\.com$/.test(host)) {
       return /\/(rss|feed|atom)|\.xml|\.rss/i.test(u.pathname + u.search);
     }
-    return true; // Everything else is assumed to be an RSS URL
+    return true; // Everything else assumed to be an RSS URL
   } catch(_) { return false; }
 }
 
@@ -3657,41 +3638,6 @@ async function fetchBooks(query, personId) {
     console.warn('[Pulse] Books fetch failed:', e.message);
     return [];
   }
-}
-
-// Try each Nitter instance in sequence; resolve with the first RSS XML that comes back.
-// Returns the parsed entries array, or [] if all instances fail.
-async function fetchTwitterHandle(handle, platform, personId) {
-  for (const base of NITTER_INSTANCES) {
-    const rssUrl = `${base}/${handle}/rss`;
-    try {
-      const { entries, error } = await fetchRSS(rssUrl, platform, personId);
-      if (!error && entries.length > 0) return entries;
-    } catch(_) {}
-  }
-  console.warn(`[Pulse] All Nitter instances failed for @${handle}`);
-  return [];
-}
-
-// Extract a bare Twitter username from @username, x.com/user, or twitter.com/user.
-// Returns null if the value looks like a full RSS URL (e.g. rss.app, Nitter RSS path).
-function _extractTwitterHandle(val) {
-  if (!val) return null;
-  const s = val.trim();
-  // Already a full RSS URL — don't treat as handle
-  try {
-    const u = new URL(s);
-    const host = u.hostname.replace(/^www\./, '');
-    if (/^(x|twitter)\.com$/.test(host)) {
-      const handle = u.pathname.replace(/^\//, '').split('/')[0];
-      return handle || null;
-    }
-    // Any other full URL (rss.app, nitter instance, etc.) → not a handle
-    return null;
-  } catch(_) {}
-  // @username or plain username
-  const m = s.match(/^@?([A-Za-z0-9_]{1,50})$/);
-  return m ? m[1] : null;
 }
 
 function timeAgo(dateStr) {
