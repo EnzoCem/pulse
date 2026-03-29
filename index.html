@@ -655,7 +655,8 @@
     font-family: 'JetBrains Mono', monospace; font-size: 11px;
     color: var(--muted); display: flex; align-items: center; gap: 5px;
   }
-  .detail-feed-error { color: #e84a4a; font-size: 10px; margin-left: 4px; }
+  .detail-feed-error { color: #e84a4a; font-size: 10px; margin-left: 4px; cursor: help; }
+  .detail-feed-warn  { color: #e8c84a; font-size: 10px; margin-left: 4px; cursor: help; font-family: 'JetBrains Mono', monospace; }
   .detail-save-row { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
   .detail-save-btn {
     background: var(--accent); color: #111; border: none; border-radius: 4px;
@@ -1760,18 +1761,25 @@ function renderPersonDetail() {
   const failedFeeds = person.fetchErrors || [];
 
   const feedRows = [
-    { key: 'podcast', label: '🎙 Podcast',  ph: 'RSS feed URL',         hint: '' },
-    { key: 'youtube', label: '▶ YouTube',   ph: '@handle, URL, or UC… ID', hint: '' },
-    { key: 'twitter', label: '🐦 X / Twitter', ph: 'rss.app RSS URL',   hint: '' },
-    { key: 'blog',    label: '✍ Blog',      ph: 'RSS or Atom feed URL',  hint: '' },
+    { key: 'podcast', label: '🎙 Podcast',     ph: 'RSS feed URL' },
+    { key: 'youtube', label: '▶ YouTube',      ph: '@handle, URL, or UC… ID' },
+    { key: 'twitter', label: '🐦 X / Twitter', ph: 'rss.app RSS URL — not x.com/username' },
+    { key: 'blog',    label: '✍ Blog',         ph: 'RSS or Atom feed URL' },
   ].map(f => {
-    const failed = failedFeeds.includes(f.key)
-      ? `<span class="detail-feed-error" data-tip="Last fetch failed">⚠</span>` : '';
+    const val = person.feeds[f.key] || '';
+    // Red ⚠ = last fetch actually failed; Amber ⚠ = URL doesn't look like RSS at all
+    const fetchFailed = failedFeeds.includes(f.key);
+    const notRss      = val && f.key === 'twitter' && !_looksLikeRssUrl(val);
+    const indicator   = fetchFailed
+      ? `<span class="detail-feed-error" title="Last fetch failed — check the URL">⚠</span>`
+      : notRss
+      ? `<span class="detail-feed-warn" title="This looks like a profile URL, not an RSS feed. Use rss.app to get an RSS URL for X/Twitter.">⚠ not RSS</span>`
+      : '';
     return `
       <div class="detail-feed-row">
-        <label class="detail-feed-lbl" for="df-${f.key}">${f.label}${failed}</label>
+        <label class="detail-feed-lbl" for="df-${f.key}">${f.label}${indicator}</label>
         <input class="detail-input" id="df-${f.key}" type="text"
-               value="${escHtml(person.feeds[f.key] || '')}" placeholder="${f.ph}">
+               value="${escHtml(val)}" placeholder="${f.ph}">
       </div>`;
   }).join('');
 
@@ -2571,7 +2579,9 @@ async function fetchPerson(person) {
     await pull(`https://www.youtube.com/feeds/videos.xml?channel_id=${person.feeds.youtube}`, 'youtube');
   if (person.feeds.podcast) await pull(person.feeds.podcast, 'podcast');
   if (person.feeds.blog)    await pull(person.feeds.blog,    'blog');
-  if (person.feeds.twitter) await pull(person.feeds.twitter, 'twitter');
+  // Only pull twitter if the URL actually looks like an RSS feed, not a social profile page
+  if (person.feeds.twitter && _looksLikeRssUrl(person.feeds.twitter))
+    await pull(person.feeds.twitter, 'twitter');
 
   person.entries     = deduplicateEntries(newEntries).slice(0, 20);
   person.lastUpdated = new Date().toISOString();
@@ -3125,6 +3135,25 @@ const cleanText  = str => str.replace(/<[^>]*>/g,'').replace(/&amp;/g,'&').repla
 const escHtml    = str => String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const getInitials = name => name.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
 const hexAlpha   = p => ({ podcast:'#2a1510', youtube:'#2a1010', twitter:'#101a2a', blog:'#141f10' }[p]||'#1a1a22');
+
+// Returns false if the URL is obviously a social-media profile page rather than an RSS/Atom feed.
+// Used to skip bad twitter field values silently rather than counting them as fetch failures.
+function _looksLikeRssUrl(url) {
+  if (!url) return false;
+  try {
+    const u    = new URL(url);
+    const host = u.hostname.replace(/^www\./, '');
+    // Plain x.com / twitter.com profile — only allow if path has rss/feed/xml indicator
+    if (/^(x|twitter)\.com$/.test(host)) {
+      return /\/(rss|feed|atom)|\.xml|\.rss/i.test(u.pathname + u.search);
+    }
+    // Plain instagram / linkedin profile pages
+    if (/^(instagram|linkedin|facebook|tiktok)\.com$/.test(host)) {
+      return /\/(rss|feed|atom)|\.xml|\.rss/i.test(u.pathname + u.search);
+    }
+    return true; // Everything else is assumed to be an RSS URL
+  } catch(_) { return false; }
+}
 
 function timeAgo(dateStr) {
   const date = new Date(dateStr); if (isNaN(date)) return 'Unknown';
