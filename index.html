@@ -2198,17 +2198,28 @@ async function _findSourceRSS(name) {
   const rssPaths = ['/feed', '/feed/', '/rss', '/rss.xml', '/feed.xml', '/?feed=rss2', '/atom.xml'];
 
   function isValidFeed(text) {
-    if (!text) return false;
-    const t = text.trimStart();
-    return t.startsWith('<?xml') || t.startsWith('<rss') || t.startsWith('<feed');
+    if (!text || text.length < 100) return false;
+    // Strip UTF-8 BOM (\uFEFF) that WordPress feeds sometimes prepend
+    const t = text.replace(/^\uFEFF/, '').trimStart();
+    return t.startsWith('<?xml') || t.startsWith('<rss') || t.startsWith('<feed')
+        || (t.startsWith('<') && (t.includes('<channel>') || t.includes('<channel ')));
   }
 
-  // Try a URL directly then via one CORS proxy — returns text or null
+  // Try a URL directly then via all three CORS proxies — returns text or null
   async function tryFetch(url) {
-    for (const u of [url, CORS_PRIMARY + encodeURIComponent(url)]) {
+    const attempts = [
+      url,
+      CORS_PRIMARY   + encodeURIComponent(url),
+      CORS_FALLBACK  + encodeURIComponent(url),
+      CORS_FALLBACK2 + encodeURIComponent(url),
+    ];
+    for (const u of attempts) {
       try {
-        const r = await fetch(u, { signal: AbortSignal.timeout(4000) });
-        if (r.ok) return await r.text();
+        const r = await fetch(u, { signal: AbortSignal.timeout(5000) });
+        if (r.ok) {
+          const text = await r.text();
+          if (text && text.length > 50) return text;
+        }
       } catch(_) {}
     }
     return null;
@@ -2239,11 +2250,15 @@ async function _findSourceRSS(name) {
   const homepageChecks = domains.map(async d => {
     const html = await tryFetch(d);
     if (!html) return null;
+    // Match <link rel="alternate" type="application/rss+xml" href="..."> in any attribute order
     const m = html.match(/<link[^>]+type=["']application\/(?:rss|atom)\+xml["'][^>]+href=["']([^"']+)["']/i)
-           || html.match(/<link[^>]+href=["']([^"']+)["'][^>]+type=["']application\/(?:rss|atom)\+xml["']/i);
+           || html.match(/<link[^>]+href=["']([^"']+)["'][^>]+type=["']application\/(?:rss|atom)\+xml["']/i)
+           || html.match(/href=["']([^"']*(?:\/feed|\/rss|\.xml|feed\.xml)[^"']*?)["']/i);
     if (!m) return null;
     let rssUrl = m[1];
-    if (rssUrl.startsWith('/')) rssUrl = d + rssUrl;
+    if (rssUrl.startsWith('//')) rssUrl = 'https:' + rssUrl;
+    if (rssUrl.startsWith('/'))  rssUrl = d + rssUrl;
+    if (!rssUrl.startsWith('http')) return null;
     const feed = await tryFetch(rssUrl);
     return isValidFeed(feed) ? rssUrl : null;
   });
