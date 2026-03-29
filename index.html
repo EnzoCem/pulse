@@ -531,8 +531,17 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     width: 560px; max-width: 95vw;
+    max-height: 90vh;
+    display: flex; flex-direction: column;
     padding: 28px;
     animation: modalIn 0.2s ease;
+    overflow: hidden;
+  }
+  #modalContent {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding-right: 4px;
+    min-height: 0;
   }
   @keyframes modalIn {
     from { opacity:0; transform:scale(0.95); }
@@ -555,7 +564,6 @@
   .modal-desc {
     font-family: 'Libre Baskerville', serif;
     font-size: 13px; line-height: 1.7; color: #c0bdb8;
-    max-height: 380px; overflow-y: auto;
     padding-right: 6px;
   }
   .modal-desc p { margin: 0 0 10px; }
@@ -584,7 +592,12 @@
   }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
   .modal-actions {
-    display: flex; gap: 10px; margin-top: 20px;
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin-top: 16px; flex-shrink: 0;
+    border-top: 1px solid var(--border); padding-top: 14px;
+  }
+  .modal-actions .btn {
+    font-size: 11px; padding: 6px 12px;
   }
 
   /* ── SCROLLBAR ── */
@@ -2310,18 +2323,33 @@ async function searchPersonByName() {
   area.innerHTML = '<div class="suggest-status">Searching podcasts, YouTube, blogs…</div>';
 
   // ── PERSON mode: iTunes first (podcast source of truth), then YouTube + blog in parallel ──
-  const itunesData = await fetch(
-    `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=podcast&entity=podcast&limit=6`,
-    { signal: AbortSignal.timeout(8000) }
-  ).then(r => r.json()).catch(() => ({ results: [] }));
+  // If the query is an Apple Podcasts URL (e.g. https://podcasts.apple.com/.../id1803050676),
+  // extract the numeric ID and use the lookup API directly instead of text search.
+  const applePodcastIdMatch = query.match(/[?&/]id(\d{7,12})(?:[/?&]|$)/i)
+    || query.match(/podcasts\.apple\.com.*\/id(\d{7,12})/i);
+  const itunesData = await (applePodcastIdMatch
+    ? fetch(
+        `https://itunes.apple.com/lookup?id=${applePodcastIdMatch[1]}&entity=podcast`,
+        { signal: AbortSignal.timeout(8000) }
+      ).then(r => r.json()).catch(() => ({ results: [] }))
+    : fetch(
+        `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=podcast&entity=podcast&limit=6`,
+        { signal: AbortSignal.timeout(8000) }
+      ).then(r => r.json()).catch(() => ({ results: [] }))
+  );
 
   // Use the top iTunes podcast URL to prevent _findBlog returning the same domain
   const topPodcastUrl = itunesData.results.find(r => r.feedUrl)?.feedUrl || '';
 
   const topPodcastName = itunesData.results.find(r => r.collectionName)?.collectionName || '';
+  // When the user pasted an Apple Podcasts URL, use the resolved podcast/artist name
+  // for YouTube & blog discovery (and later scoring) instead of the raw URL string.
+  const effectiveQuery = applePodcastIdMatch
+    ? (itunesData.results[0]?.artistName || itunesData.results[0]?.collectionName || query)
+    : query;
   const [ytId, blogUrl] = await Promise.all([
-    _findYouTube(query, topPodcastName),
-    _findBlog(query, topPodcastUrl),
+    _findYouTube(effectiveQuery, topPodcastName),
+    _findBlog(effectiveQuery, topPodcastUrl),
   ]);
 
   itunesData.results.forEach(r => {
@@ -2342,13 +2370,13 @@ async function searchPersonByName() {
 
   // Attach YouTube + blog to best matching suggestion (or create a stub)
   if (ytId || blogUrl) {
-    let best = _suggestions.findIndex(s => _nameScore(query, s.name) >= 1);
+    let best = _suggestions.findIndex(s => _nameScore(effectiveQuery, s.name) >= 1);
     if (best < 0 && _suggestions.length > 0) best = 0;
     if (best >= 0) {
       if (ytId)    _suggestions[best].youtubeId = ytId;
       if (blogUrl) _suggestions[best].blogUrl   = blogUrl;
     } else {
-      _suggestions.push({ name: query, desc: '', avatar: '', podcastUrl: '',
+      _suggestions.push({ name: effectiveQuery, desc: '', avatar: '', podcastUrl: '',
                           podcastName: '', trackCount: null, youtubeId: ytId, blogUrl });
     }
   }
@@ -2360,10 +2388,11 @@ async function searchPersonByName() {
     return;
   }
 
-  // Auto-apply best match if name score ≥ 2 (close match), otherwise let user pick
+  // Auto-apply best match if name score ≥ 2 (close match), otherwise let user pick.
+  // When query was an Apple Podcasts URL, the lookup is exact — always auto-apply.
   const bestIdx = _suggestions.reduce((bi, s, i) =>
-    _nameScore(query, s.name) > _nameScore(query, _suggestions[bi].name) ? i : bi, 0);
-  const autoApplied = _nameScore(query, _suggestions[bestIdx].name) >= 2;
+    _nameScore(effectiveQuery, s.name) > _nameScore(effectiveQuery, _suggestions[bi].name) ? i : bi, 0);
+  const autoApplied = applePodcastIdMatch || _nameScore(effectiveQuery, _suggestions[bestIdx].name) >= 2;
   if (autoApplied) applySuggestion(bestIdx, true);
 
   // Render suggestion list (as "other options" if auto-applied, full list if not)
@@ -2751,8 +2780,33 @@ function deduplicateEntries(entries) {
   return kept;
 }
 
+// If a stored feed URL is an Apple Podcasts page URL (not an RSS feed),
+// resolve it to the actual RSS feed URL via iTunes lookup and save it back.
+async function resolveApplePodcastUrl(url) {
+  if (!url) return url;
+  const m = url.match(/podcasts\.apple\.com.*\/id(\d{7,12})/i)
+         || url.match(/[?&/]id(\d{7,12})(?:[/?&]|$)/i);
+  if (!m) return url;
+  try {
+    const data = await fetch(
+      `https://itunes.apple.com/lookup?id=${m[1]}&entity=podcast`,
+      { signal: AbortSignal.timeout(8000) }
+    ).then(r => r.json()).catch(() => null);
+    return data?.results?.[0]?.feedUrl || url;
+  } catch(e) { return url; }
+}
+
 async function fetchPerson(person) {
   if (!person) return;
+  // Auto-resolve Apple Podcasts page URLs → actual RSS feed URLs before fetching.
+  // This fixes cards where the user accidentally pasted an Apple Podcasts link.
+  if (person.feeds.podcast && person.feeds.podcast.includes('podcasts.apple.com')) {
+    const resolved = await resolveApplePodcastUrl(person.feeds.podcast);
+    if (resolved && resolved !== person.feeds.podcast) {
+      person.feeds.podcast = resolved;
+      saveState(); // persist the resolved URL so future refreshes skip the lookup
+    }
+  }
   person.loading = true;
   updateCardEntries(person);
   const btn = document.getElementById('refresh-' + person.id);
@@ -2762,9 +2816,15 @@ async function fetchPerson(person) {
   const failedFeeds = [];
 
   async function pull(url, platform) {
-    const { entries, error } = await fetchRSS(url, platform, person.id);
+    const { entries, error, resolvedUrl } = await fetchRSS(url, platform, person.id);
     if (error) failedFeeds.push(platform);
     newEntries.push(...entries);
+    // If RSS autodiscovery found a different URL (e.g. /essays → /feed.rss),
+    // save it back so future refreshes skip the extra HTML fetch.
+    if (resolvedUrl && resolvedUrl !== url) {
+      const feedKey = Object.keys(person.feeds).find(k => person.feeds[k] === url);
+      if (feedKey) person.feeds[feedKey] = resolvedUrl;
+    }
   }
 
   if (person.type === 'source') {
@@ -2798,8 +2858,99 @@ async function fetchPerson(person) {
   if (btn) btn.classList.remove('spinning');
 }
 
-async function fetchRSS(url, platform, personId) {
+// ── RSS FEED DISCOVERY HELPERS ──
+
+// Returns true if the given text looks like an RSS or Atom feed.
+function _looksLikeFeed(text) {
+  if (!text) return false;
+  const t = text.trimStart();
+  return t.includes('<rss') || t.includes('<channel') ||
+         (t.startsWith('<feed') && t.includes('xmlns')) ||
+         (t.startsWith('<?xml') && (t.includes('<rss') || t.includes('<feed')));
+}
+
+// Stage 1: parse <link rel="alternate" type="application/rss+xml"> from fetched HTML.
+function _discoverFeedInHtml(html, baseUrl) {
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const link = doc.querySelector(
+      'link[rel="alternate"][type="application/rss+xml"], ' +
+      'link[rel="alternate"][type="application/atom+xml"]'
+    );
+    if (!link) return null;
+    const href = link.getAttribute('href') || '';
+    if (!href) return null;
+    return href.startsWith('http') ? href : new URL(href, baseUrl).href;
+  } catch(_) { return null; }
+}
+
+// Stage 2: probe common RSS path suffixes on the same origin.
+// Returns the first URL that actually serves a feed, or null.
+async function _tryCommonRssPaths(pageUrl) {
+  let origin;
+  try { origin = new URL(pageUrl).origin; } catch(_) { return null; }
+  const paths = [
+    '/feed', '/feed/', '/rss', '/rss.xml', '/feed.rss', '/atom.xml',
+    '/feed/atom', '/index.xml', '/feeds/posts/default', '/blog/feed',
+    '/essays.rss', '/articles.rss', '/posts.rss',
+  ];
+  for (const path of paths) {
+    const candidate = origin + path;
+    try {
+      const resp = await fetch(CORS_PRIMARY + encodeURIComponent(candidate),
+        { signal: AbortSignal.timeout(5000) });
+      if (!resp.ok) continue;
+      const text = await resp.text();
+      if (_looksLikeFeed(text)) return candidate;
+    } catch(_) {}
+  }
+  return null;
+}
+
+// Stage 3: query Feedly's public feed-search API (no auth required).
+// Returns the best matching RSS URL for the given page URL, or null.
+async function _feedlyDiscover(pageUrl) {
+  try {
+    const domain = new URL(pageUrl).hostname.replace(/^www\./, '');
+    const apiUrl = `https://cloud.feedly.com/v3/search/feeds?query=${encodeURIComponent(domain)}&count=10`;
+    const resp = await fetch(CORS_PRIMARY + encodeURIComponent(apiUrl),
+      { signal: AbortSignal.timeout(8000) });
+    if (!resp.ok) return null;
+    const data = JSON.parse(await resp.text());
+    const feeds = (data.results || [])
+      .map(r => (r.feedId || '').replace(/^feed\//, ''))
+      .filter(u => u.startsWith('http'));
+    // Prefer a feed URL that lives on the same domain
+    return feeds.find(u => u.includes(domain)) || feeds[0] || null;
+  } catch(_) { return null; }
+}
+
+// Master discovery: runs all three stages and returns the first feed URL found.
+// htmlContent is the already-fetched HTML string (stage 1 is free — no extra request).
+async function _discoverRssFeed(pageUrl, htmlContent) {
+  // Stage 1: instant — just parse the HTML we already have
+  const fromHtml = _discoverFeedInHtml(htmlContent, pageUrl);
+  if (fromHtml) return fromHtml;
+
+  // Stages 2 + 3: run in parallel, take whichever resolves first with a result
+  return new Promise(resolve => {
+    let done = false;
+    let pending = 2;
+    function finish(result) {
+      if (result && !done) { done = true; resolve(result); }
+      else if (--pending === 0 && !done) resolve(null);
+    }
+    _tryCommonRssPaths(pageUrl).then(finish).catch(() => finish(null));
+    _feedlyDiscover(pageUrl).then(finish).catch(() => finish(null));
+  });
+}
+
+// fetchRSS — _redirected flag prevents infinite autodiscovery loops.
+// Returns { entries, error, resolvedUrl } — resolvedUrl may differ from url
+// when autodiscovery found a feed at a different address.
+async function fetchRSS(url, platform, personId, _redirected = false) {
   let xml = null;
+  let resolvedUrl = url;
 
   // Step 1: Direct fetch — YouTube RSS and many podcast feeds support CORS natively
   try {
@@ -2843,7 +2994,23 @@ async function fetchRSS(url, platform, personId) {
     }
   }
 
-  if (!xml) return { entries: [], error: true };
+  if (!xml) return { entries: [], error: true, resolvedUrl };
+
+  // ── RSS Autodiscovery ──
+  // If we got an HTML page instead of XML (e.g. https://aeon.co/essays),
+  // run the full 3-stage discovery pipeline:
+  //   1. <link rel="alternate"> in the HTML (free — already have the page)
+  //   2. Probe common RSS paths on the same domain (/feed, /rss.xml, …)
+  //   3. Query Feedly's public feed-search API as a last resort
+  if (!_redirected && (xml.includes('<html') || xml.trimStart().startsWith('<!DOCTYPE'))) {
+    const feedUrl = await _discoverRssFeed(url, xml);
+    if (feedUrl) {
+      console.log(`RSS autodiscovery: ${url} → ${feedUrl}`);
+      return fetchRSS(feedUrl, platform, personId, true);
+    }
+    // All discovery stages exhausted — nothing to parse
+    return { entries: [], error: true, resolvedUrl };
+  }
 
   try {
     const doc   = new DOMParser().parseFromString(xml, 'text/xml');
@@ -2892,10 +3059,10 @@ async function fetchRSS(url, platform, personId) {
         date:  dateStr ? new Date(dateStr).toISOString() : new Date().toISOString(),
       });
     });
-    return { entries: results, error: false };
+    return { entries: results, error: false, resolvedUrl };
   } catch(e) {
     console.warn('Feed parse error:', url, e.message);
-    return { entries: [], error: true };
+    return { entries: [], error: true, resolvedUrl };
   }
 }
 
@@ -3079,6 +3246,12 @@ function openEntry(entry) {
     tBtn.style.display = '';
     nbBtn.style.display  = '';   // NotebookLM — video URL resolved async by findYouTubeForPodcast
     aiBtn.style.display  = '';   // AI Notes
+    obsBtn.style.display = '';   // Obsidian
+
+  } else if (entry.platform === 'blog' || entry.platform === 'twitter') {
+    // Blog / Substack / X: fetch article text for AI Notes; use URL for NotebookLM
+    nbBtn.style.display  = '';   // NotebookLM — copies article URL (web source)
+    aiBtn.style.display  = '';   // AI Notes — fetches article text
     obsBtn.style.display = '';   // Obsidian
   }
 
@@ -3730,7 +3903,21 @@ async function openInNotebookLM() {
   const entry = _currentModalEntry;
   if (!entry) return;
 
-  // Get the YouTube URL — prefer the video link already resolved in the modal
+  const nbUrl = pwConfig.notebookLMUrl || 'https://notebooklm.google.com';
+
+  // ── Blog / Twitter: copy the article URL directly (NotebookLM accepts web URLs as sources) ──
+  if (entry.platform === 'blog' || entry.platform === 'twitter') {
+    if (!entry.link) {
+      _showToast('No URL available for this entry', 3000);
+      return;
+    }
+    try { await navigator.clipboard.writeText(entry.link); } catch(_) {}
+    window.open(nbUrl, '_blank', 'noopener');
+    _showToast('📋 Article URL copied — paste as a new source in NotebookLM');
+    return;
+  }
+
+  // ── YouTube / Podcast: copy the video URL ──
   const elVideo = document.getElementById('modalVideoLink');
   let ytUrl = elVideo?.href && elVideo.href !== '#' ? elVideo.href : null;
 
@@ -3742,11 +3929,7 @@ async function openInNotebookLM() {
     return;
   }
 
-  // Copy URL to clipboard
   try { await navigator.clipboard.writeText(ytUrl); } catch(_) {}
-
-  // Open their NotebookLM notebook (or generic NotebookLM if none configured)
-  const nbUrl = pwConfig.notebookLMUrl || 'https://notebooklm.google.com';
   window.open(nbUrl, '_blank', 'noopener');
   _showToast('📋 Video URL copied — paste as a new source in NotebookLM');
 }
@@ -3808,6 +3991,70 @@ async function callClaude(apiKey, systemPrompt, userContent) {
   return data.content[0].text;
 }
 
+// ── ARTICLE TEXT FETCHER ──
+// Fetches a blog/article URL via CORS proxy, strips HTML boilerplate,
+// and returns the main readable text (max ~15 000 chars for Claude).
+async function fetchArticleText(url) {
+  if (!url) return null;
+  let html = null;
+
+  // Try direct first (some blogs send CORS headers)
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (r.ok) { const t = await r.text(); if (t.includes('<')) html = t; }
+  } catch(_) {}
+
+  // Fall through CORS proxies
+  for (const proxy of [CORS_PRIMARY, CORS_FALLBACK, CORS_FALLBACK2]) {
+    if (html) break;
+    try {
+      const r = await fetch(proxy + encodeURIComponent(url), { signal: AbortSignal.timeout(12000) });
+      if (r.ok) html = await r.text();
+    } catch(_) {}
+  }
+
+  if (!html) return null;
+
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+
+    // Remove noise elements
+    doc.querySelectorAll(
+      'script, style, noscript, iframe, nav, header, footer, aside, ' +
+      '[role="navigation"], [role="banner"], [role="complementary"], ' +
+      '.nav, .navbar, .footer, .header, .sidebar, .menu, .cookie, ' +
+      '.ad, .ads, .advertisement, .promo, .popup, .modal, .overlay, ' +
+      '.share, .social, .comments, .related, .recommended, .newsletter'
+    ).forEach(el => el.remove());
+
+    // Prefer semantic content containers
+    const main =
+      doc.querySelector('article') ||
+      doc.querySelector('[role="main"]') ||
+      doc.querySelector('main') ||
+      doc.querySelector('.post-content, .entry-content, .article-body, ' +
+                         '.article-content, .post-body, .story-body, ' +
+                         '.content-body, .prose, .markup') ||
+      doc.body;
+
+    // Walk text nodes for clean output (better than textContent on inline elements)
+    const lines = [];
+    const walker = doc.createTreeWalker(main, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const t = node.textContent.trim();
+      if (t.length > 20) lines.push(t);   // skip tiny fragments (nav labels, etc.)
+    }
+
+    const raw = lines.join(' ')
+      .replace(/\s{2,}/g, ' ')            // collapse whitespace
+      .replace(/ ([.,;:!?])/g, '$1')      // fix punctuation spacing
+      .trim();
+
+    return raw.slice(0, 15000) || null;   // cap at ~3 000 words
+  } catch(_) { return null; }
+}
+
 async function generateAINotes() {
   const entry = _currentModalEntry;
   if (!entry) return;
@@ -3830,15 +4077,17 @@ async function generateAINotes() {
     aiArea.style.display = '';
   }
 
+  const isArticle = entry.platform === 'blog' || entry.platform === 'twitter';
+
   try {
     const person   = persons.find(p => p.id === entry.personId) || {};
-    const title    = entry.title || 'Unknown episode';
+    const title    = entry.title || (isArticle ? 'Unknown article' : 'Unknown episode');
     const date     = entry.date  ? new Date(entry.date).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' }) : '';
     const descText = entry.desc  || '';
 
-    // Try to get transcript — for podcasts find YouTube video first
+    // Try to get source text
     let transcript = null;
-    let sourceNote = 'description only (no transcript available)';
+    let sourceNote = isArticle ? 'description only (article text unavailable)' : 'description only (no transcript available)';
 
     if (entry.platform === 'youtube') {
       const videoId = extractYouTubeId(entry.link || '');
@@ -3866,30 +4115,65 @@ async function generateAINotes() {
           }
         }
       }
+    } else if (isArticle) {
+      // Blog / Twitter / Substack: fetch the actual article text
+      if (aiArea) {
+        aiArea.innerHTML = `
+          <div class="ai-notes-label"><span class="ai-notes-spinner"></span> Fetching article…</div>`;
+      }
+      const articleText = await fetchArticleText(entry.link);
+      if (articleText) {
+        transcript = articleText;
+        sourceNote = 'article text';
+      }
     }
 
-    // Build content for Claude
-    const contentLines = [
-      `Episode: "${title}"`,
-      person.name ? `Podcast / Show: ${person.name}` : '',
-      date        ? `Date: ${date}`                   : '',
-      '',
-      transcript
-        ? `TRANSCRIPT:\n${transcript}`
-        : `EPISODE DESCRIPTION:\n${descText || '(no description available)'}`,
-    ].filter(l => l !== undefined).join('\n');
+    // Build content for Claude — labels differ for articles vs. episodes
+    const contentLines = isArticle
+      ? [
+          `Article: "${title}"`,
+          person.name ? `By / Source: ${person.name}` : '',
+          date        ? `Date: ${date}`                : '',
+          entry.link  ? `URL: ${entry.link}`           : '',
+          '',
+          transcript
+            ? `ARTICLE TEXT:\n${transcript}`
+            : `ARTICLE DESCRIPTION:\n${descText || '(no description available)'}`,
+        ].filter(l => l !== undefined).join('\n')
+      : [
+          `Episode: "${title}"`,
+          person.name ? `Podcast / Show: ${person.name}` : '',
+          date        ? `Date: ${date}`                   : '',
+          '',
+          transcript
+            ? `TRANSCRIPT:\n${transcript}`
+            : `EPISODE DESCRIPTION:\n${descText || '(no description available)'}`,
+        ].filter(l => l !== undefined).join('\n');
 
-    // Build system prompt
-    const defaultInstructions = [
-      'You are a research assistant helping analyse podcast and video content.',
-      'Given the content below, produce concise structured notes with the following sections:',
-      '• **Key Topics** — main subjects discussed (bullet list)',
-      '• **Key Insights** — the most interesting or surprising ideas (bullet list)',
-      '• **Notable Quotes** — 1–3 direct quotes worth remembering (if transcript available)',
-      '• **People & Resources Mentioned** — names, books, papers, tools referenced',
-      '• **My Takeaways** — leave this section blank for the user to fill in',
-      'Be concise. Use plain text, not markdown headers. Separate sections with blank lines.',
-    ].join('\n');
+    // Build system prompt — adapted for articles vs. audio/video
+    const defaultInstructions = isArticle
+      ? [
+          'You are a research assistant helping analyse written articles and blog posts.',
+          'Given the content below, produce concise structured notes with the following sections:',
+          '• **Main Argument** — the central thesis or claim in 1–2 sentences',
+          '• **Key Points** — the main supporting ideas or findings (bullet list)',
+          '• **Key Insights** — the most interesting, surprising, or nuanced observations (bullet list)',
+          '• **Notable Quotes** — 1–3 direct quotes worth remembering',
+          '• **People & Resources Mentioned** — names, books, papers, tools, studies referenced',
+          '• **My Takeaways** — leave this section blank for the user to fill in',
+          'Be concise. Use plain text, not markdown headers. Separate sections with blank lines.',
+        ].join('\n')
+      : [
+          'You are a research assistant helping analyse podcast and video content.',
+          'Given the content below, produce concise structured notes with the following sections:',
+          '• **Key Topics** — main subjects discussed (bullet list)',
+          '• **Key Insights** — the most interesting or surprising ideas (bullet list)',
+          '• **Notable Quotes** — 1–3 direct quotes worth remembering (if transcript available)',
+          '• **People & Resources Mentioned** — names, books, papers, tools referenced',
+          '• **My Takeaways** — leave this section blank for the user to fill in',
+          'Be concise. Use plain text, not markdown headers. Separate sections with blank lines.',
+        ].join('\n');
+
     const systemPrompt = pwConfig.aiPromptExtra
       ? `${defaultInstructions}\n\nAdditional user instructions: ${pwConfig.aiPromptExtra}`
       : defaultInstructions;

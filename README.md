@@ -1,27 +1,31 @@
 # Pulse — PersonWatch
 
-A personal intelligence dashboard for tracking specific people across podcasts, YouTube, X/Twitter, and blogs. Open `index.html` in any browser — no server, no install, no API keys required.
+A personal intelligence dashboard for tracking specific people and publications across podcasts, YouTube, X/Twitter, and blogs. Open `index.html` in any browser — no server, no install, no build step.
 
 ---
 
 ## What it does
 
-Define a list of people you follow (podcasters, researchers, thinkers, etc.) and assign their public feed URLs. Pulse fetches all feeds and shows everything in one place, organised by **person** — not by platform.
+Define a list of people you follow (podcasters, researchers, thinkers) or publications/sources (Big Think, Aeon, Quanta Magazine) and assign their public feed URLs. Pulse fetches all feeds and shows everything in one place, organised by **person** — not by platform.
 
 - **People view** — one card per person showing their 4 most recent items with NEW badges on unseen content
 - **Timeline view** — all activity from all people, sorted chronologically, grouped by date
-- **Filter by platform** — Podcast / YouTube / X / Blog filter chips in both views
+- **Filter by platform** — Podcast / YouTube / X / Blog chips in both views
 - **Filter by topic** — tag-based filtering across all people
-- **Entry detail modal** — click any item to read its description, add topics, and open it
+- **Entry detail modal** — click any item to read its description, add notes, and open it
+- **AI Notes** — generate structured research notes from YouTube transcripts or article text via Claude API
+- **NotebookLM** — one-click to copy a video or article URL and open your notebook
+- **Obsidian** — write episode/article notes directly to your Obsidian vault
+- **Sources / Publications** — add a publication (e.g. Aeon) as a source; articles show with their individual author names
 
-All data is persisted in `localStorage`. Nothing is sent to any server.
+All data is persisted in `localStorage`. Nothing is sent to any server except optional Claude API calls if you configure an API key.
 
 ---
 
 ## How to use
 
 1. Open `index.html` in any browser (double-click, or run `python3 -m http.server 5500` then open `http://localhost:5500`)
-2. Click **+ Add Person**, type a name, and hit **🔍 Search** — feeds are auto-detected from iTunes, YouTube, and common blog patterns
+2. Click **+ Add Person**, type a name (or paste an Apple Podcasts URL), and hit **🔍 Search** — feeds are auto-detected from iTunes, YouTube, and blog patterns
 3. Review the auto-filled fields, adjust if needed, click **Add Person**
 4. Hit **↻** on a card or **Refresh All** in the bottom bar to fetch content
 
@@ -31,42 +35,89 @@ All data is persisted in `localStorage`. Nothing is sent to any server.
 
 | Platform | What to enter | Notes |
 |---|---|---|
-| Podcast | Full RSS URL | e.g. `https://feeds.megaphone.fm/…` — auto-detected by Search |
-| YouTube | Channel ID, `@handle`, or full URL | e.g. `@PowerfulJRE` or `https://youtube.com/@PowerfulJRE` — auto-resolved to `UC…` ID on save |
+| Podcast | Full RSS URL **or** Apple Podcasts URL | Auto-detected by Search. Pasting `podcasts.apple.com/…/id123` resolves to the real RSS feed automatically |
+| YouTube | Channel ID, `@handle`, or full URL | e.g. `@PowerfulJRE` — auto-resolved to `UC…` ID on save |
 | X / Twitter | rss.app RSS URL | Create a feed at [rss.app](https://rss.app) (~$5/mo), paste the generated URL |
-| Blog | RSS or Atom feed URL | e.g. `yourname.substack.com/feed` — auto-detected by Search |
+| Blog / Main RSS | RSS URL **or** any website/section URL | e.g. `https://aeon.co/essays` — app auto-discovers the RSS feed via `<link rel="alternate">`, common path probing, and Feedly's feed database |
 
 ### YouTube tip: no channel ID needed
 The YouTube field accepts any of these — all resolve automatically when you save:
 - Raw channel ID: `UCzQUP1qoWDoEbmsQxvdjxgQ`
 - Handle: `@PowerfulJRE`
 - Full URL: `https://youtube.com/@PowerfulJRE`
-- Username: `PowerfulJRE`
 
-### YouTube-only podcasts (e.g. JRE)
-If a podcast is published exclusively on YouTube, leave **Podcast RSS** blank and enter only the YouTube channel. Episodes will appear with podcast styling (🎙 orange) and work without any audio/RSS feed.
+### Pasting Apple Podcasts URLs
+You can paste a full Apple Podcasts link (e.g. `https://podcasts.apple.com/gb/podcast/big-think/id1803050676`) directly into the Name or Podcast field. The app extracts the iTunes ID and looks up the real RSS feed automatically.
+
+### Website URLs for blogs
+If you enter a website or section URL instead of a direct RSS URL (e.g. `https://aeon.co/essays`), the app runs a 3-stage discovery:
+1. Looks for `<link rel="alternate" type="application/rss+xml">` in the fetched HTML
+2. Probes common RSS paths on the domain (`/feed`, `/rss.xml`, `/feed.rss`, etc.)
+3. Queries Feedly's public feed-search API as a last resort
+
+The resolved RSS URL is saved back automatically so future refreshes go directly to the feed.
 
 ---
 
-## Podcast episode features
+## Podcast features
 
-When you open a podcast episode, the modal shows:
+When you open a podcast episode:
 
-- **Clean description** — sponsor ad copy is automatically stripped. A "Show full description (includes sponsors)" link expands it if needed.
-- **🔊 Open Sound** — opens the RSS / Spotify audio link
-- **▶ Open Video** — finds and opens the matching YouTube video automatically (searches by episode title, no channel ID required). Shows "🔍 Finding video…" while searching.
+- **Clean description** — sponsor ad copy is automatically stripped. A "Show full description" link expands it if needed.
+- **🔊 Open Sound** — opens the RSS audio link
+- **▶ Open Video** — finds and opens the matching YouTube video automatically
+- **📄 Load Transcript** — fetches YouTube captions inline (YouTube entries)
+- **🔍 Find Transcript** — Google search for a podcast transcript
+- **🤖 AI Notes** — fetches the YouTube transcript and generates structured research notes via Claude API
+- **📔 NotebookLM** — copies the YouTube URL to clipboard and opens your notebook
+- **📓 Obsidian** — writes the episode notes to your Obsidian vault
+
+---
+
+## Blog / Article features
+
+When you open a blog post or article:
+
+- **🤖 AI Notes** — fetches the full article text (via CORS proxy) and sends it to Claude for analysis. Produces: Main Argument, Key Points, Key Insights, Notable Quotes, People & Resources Mentioned, and a blank My Takeaways section.
+- **📔 NotebookLM** — copies the article URL to clipboard and opens your notebook (NotebookLM accepts web URLs as sources directly)
+- **📓 Obsidian** — writes the article notes to your Obsidian vault
+
+---
+
+## Sources / Publications
+
+Toggle **PUBLICATION / SOURCE** in the Add Person panel to add a publication instead of an individual. Differences:
+
+- The "Podcast RSS" field becomes "Main RSS Feed"
+- Both the Main RSS Feed and Blog fields are fetched and shown as articles
+- YouTube content is fetched independently alongside articles (not exclusive like for persons)
+- Individual article author names are shown on each entry row
 
 ---
 
 ## Editing people
 
-Click any person card (the name/avatar area) to open their **detail panel**. From there you can:
+Click any person card (the name/avatar area) to open their **detail panel**:
 
-- Edit name, description, avatar URL
+- Edit name, description, website, avatar URL
 - Add or remove topics / tags
 - Update any feed URL (YouTube field auto-resolves handles)
-- Click **Save Changes** — then **↻** to refresh with the new feeds
+- Click **Save Changes** → **↻** to refresh with the new feeds
 - **Delete Person** to remove them entirely
+
+---
+
+## AI features setup
+
+Open **⚙ Settings** (top-right gear icon) to configure:
+
+| Setting | Where to get it |
+|---|---|
+| Anthropic API key | [console.anthropic.com](https://console.anthropic.com) |
+| NotebookLM URL | Open your notebook, copy the URL from the browser bar |
+| AI Notes prompt (extra instructions) | Optional — appended to the default prompt |
+| Auto-save AI Notes to Obsidian | Toggle — requires Obsidian vault to be connected |
+| Obsidian vault | Click "Connect Vault" — uses the File System Access API (no plugin needed) |
 
 ---
 
@@ -83,15 +134,24 @@ Pulse/
 
 ### CORS proxies
 
-RSS feeds are fetched through a chain of three public CORS proxies — each tried in order until one succeeds:
+RSS feeds are fetched through a chain of three public CORS proxies, tried in order:
 
-| Priority | Proxy | Good for |
+| Priority | Proxy | Best for |
 |---|---|---|
-| 1 | `corsproxy.io` | General RSS, podcast feeds |
+| 1 | `corsproxy.io` | General RSS, podcast feeds, API calls |
 | 2 | `allorigins.win/raw` | General fallback |
-| 3 | `api.codetabs.com/v1/proxy` | YouTube feeds, YouTube search |
+| 3 | `api.codetabs.com/v1/proxy` | YouTube feeds |
 
-YouTube-specific fetches (channel resolution, video search) always use codetabs as it reliably returns YouTube's embedded JSON.
+### External APIs used
+
+| API | Auth | Purpose |
+|---|---|---|
+| iTunes Search / Lookup | None | Podcast search by name; resolves Apple Podcasts URLs to RSS feeds |
+| YouTube Data (RSS) | None | Channel feed via `youtube.com/feeds/videos.xml?channel_id=…` |
+| YouTube (captions) | None | Transcript fetch for AI Notes |
+| Feedly feed search | None | RSS feed discovery for website URLs |
+| Anthropic Messages API | API key (yours) | AI Notes generation |
+| File System Access API | Browser prompt | Obsidian vault write |
 
 ### Data model
 
@@ -101,14 +161,17 @@ YouTube-specific fetches (channel resolution, video search) always use codetabs 
   id:          string,        // slugified name + timestamp
   name:        string,
   desc:        string,
+  website:     string,        // optional homepage URL
   avatar:      string,        // image URL, optional
+  type:        'person' | 'source',  // person = individual, source = publication
   feeds: {
-    podcast:   string,        // full RSS URL
-    youtube:   string,        // UC… channel ID (auto-resolved from handle/URL on save)
+    podcast:   string,        // full RSS URL (or "Main RSS Feed" for sources)
+    youtube:   string,        // UC… channel ID
     twitter:   string,        // rss.app RSS URL
     blog:      string,        // full RSS URL
   },
   tags:        string[],      // topics for filtering
+  itunesId:    number|null,   // iTunes collection ID (enables full episode history)
   entries:     Entry[],       // max 20, sorted newest first
   lastUpdated: string|null,   // ISO 8601
   fetchErrors: string[],      // platforms that failed on last refresh
@@ -116,17 +179,27 @@ YouTube-specific fetches (channel resolution, video search) always use codetabs 
 
 // Entry
 {
-  id:        string,          // personId + platform + link (max 80 chars)
-  personId:  string,
-  platform:  'podcast'|'youtube'|'twitter'|'blog',
-  title:     string,
-  link:      string,          // RSS/Spotify/blog URL
-  desc:      string,          // snippet, max 300 chars, HTML-stripped
-  date:      string,          // ISO 8601
+  id:            string,      // personId + platform + link (max 80 chars)
+  personId:      string,
+  platform:      'podcast'|'youtube'|'twitter'|'blog',
+  title:         string,
+  link:          string,      // URL to open
+  desc:          string,      // snippet, max 300 chars, HTML-stripped
+  date:          string,      // ISO 8601
+  author:        string,      // article author (populated from dc:creator / itunes:author)
+  transcriptUrl: string,      // Podcasting 2.0 <podcast:transcript> URL if present
 }
 
-// Seen tracking (localStorage: 'pw-seen')
-seenIds: Set<string>          // entry IDs the user has opened (clears NEW badge)
+// localStorage keys
+'pw-persons'    → Person[]          persons list
+'pw-seen'       → string[]          entry IDs the user has opened (clears NEW badge)
+'pw-listened'   → string[]          entry IDs marked as listened
+'pw-entry-tags' → Record<id,string[]>  per-entry topic tags
+'pw-notes'      → Record<id,string>    per-entry manual + AI notes
+'pw-config'     → object            API keys and settings (anthropicKey, notebookLMUrl, etc.)
+
+// IndexedDB: 'pulse-episodes'   full episode history per person (iTunes)
+// IndexedDB: 'pulse-vault'      FileSystemDirectoryHandle for Obsidian vault
 ```
 
 ---
@@ -136,25 +209,42 @@ seenIds: Set<string>          // entry IDs the user has opened (clears NEW badge
 ### Done
 - [x] People view + Timeline view
 - [x] Platform and topic filtering
-- [x] Edit person (feeds, name, avatar, tags) via detail panel
+- [x] Edit person (feeds, name, avatar, tags, website) via detail panel
 - [x] Auto-search from person name (iTunes + YouTube + blog detection)
+- [x] Apple Podcasts URL → RSS feed auto-resolution (iTunes lookup by ID)
 - [x] YouTube handle / URL → channel ID auto-resolution
-- [x] YouTube-as-podcast mode (no RSS needed)
+- [x] YouTube-as-podcast mode (no RSS needed for YouTube-only shows)
+- [x] RSS feed autodiscovery for website URLs (3-stage: HTML link tag → path probing → Feedly API)
 - [x] Podcast ad stripping from descriptions
-- [x] Dual Open Sound / Open Video buttons for podcasts
-- [x] YouTube video auto-find by episode title search (no channel ID needed)
+- [x] Open Sound / Open Video buttons for podcasts
+- [x] YouTube video auto-find by episode title (no channel ID needed)
 - [x] Three-proxy CORS fallback chain
+- [x] Full podcast episode history via iTunes Lookup API
+- [x] Publication / Source type (articles with per-author names)
+- [x] Per-entry notes (manual text saved in localStorage)
+- [x] Per-entry topic tags
+- [x] AI Notes via Claude API — YouTube transcript + article text, structured output
+- [x] NotebookLM one-click (video URL or article URL copied to clipboard)
+- [x] Obsidian vault integration (File System Access API, no plugin needed)
+- [x] Podcasting 2.0 transcript links (`<podcast:transcript>`)
 
 ### Planned
+- [ ] Books — new content type with Open Library / Google Books lookup, reading status, AI summary
 - [ ] Auto-refresh every N minutes with visual countdown
 - [ ] Show more than 4 entries per card (expand / paginate)
-- [ ] Keyword search across all entry titles
-- [ ] Export / import people list as JSON backup
+- [ ] Keyword search across all entry titles and descriptions
+- [ ] Export / import persons list as JSON backup
+- [ ] Newsletters as a distinct platform (Substack, Beehiiv, Ghost)
+- [ ] arXiv / papers platform (author RSS feeds)
+- [ ] GitHub activity platform (user event feed)
+- [ ] Weekly AI digest across all tracked people
 - [ ] Browser push notifications for new content
-- [ ] AI weekly digest via Claude API (claude-sonnet-4-6)
+- [ ] Smart collections (saved filter combos)
+- [ ] Person profile page (full-screen view with all entries and books)
+- [ ] Readwise / Notion integration for notes export
 - [ ] Self-hosted backend (removes CORS proxy dependency, enables background polling)
-- [ ] Electron wrapper (desktop app, no CORS issues, system tray)
 - [ ] Mobile PWA (service worker + manifest)
+- [ ] Electron wrapper (desktop app, no CORS issues, system tray)
 
 ---
 
@@ -168,4 +258,4 @@ python3 -m http.server 5500
 # then open http://localhost:5500
 ```
 
-> **Note:** Opening the file directly via `file://` uses a separate localStorage from any local server. Pick one and stick with it.
+> **Note:** Opening via `file://` uses a separate localStorage from a local server. Pick one and stick with it.
