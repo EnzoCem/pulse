@@ -1256,18 +1256,35 @@ async function findYouTubeForPodcast(person, entry) {
     if (_titleOverlap(epNorm, _normTitle(yt.title)) >= 0.5) return yt.link;
   }
 
-  // Step 2 — fetch the person's YouTube RSS feed directly (reliable XML, not scraping)
+  // Step 2 — fetch the person's YouTube RSS feed directly (fast if channel ID is set)
   const channelId = person.feeds?.youtube;
-  if (!channelId) return null;
+  if (channelId) {
+    try {
+      const ytRssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
+      const liveEntries = await fetchRSS(ytRssUrl, 'youtube', person.id);
+      for (const yt of liveEntries) {
+        if (_titleOverlap(epNorm, _normTitle(yt.title)) >= 0.5) return yt.link;
+      }
+    } catch(e) {
+      console.warn('YouTube RSS lookup failed:', e.message);
+    }
+  }
+
+  // Step 3 — search YouTube directly for person name + episode title.
+  // Works even without a channel ID configured. Returns the first video result.
   try {
-    const ytRssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
-    const liveEntries = await fetchRSS(ytRssUrl, 'youtube', person.id);
-    for (const yt of liveEntries) {
-      if (_titleOverlap(epNorm, _normTitle(yt.title)) >= 0.5) return yt.link;
+    const q = `${person.name} ${entry.title}`;
+    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
+    const resp = await fetch(CORS_FALLBACK2 + encodeURIComponent(searchUrl), { signal: AbortSignal.timeout(8000) });
+    if (resp.ok) {
+      const html = await resp.text();
+      const m = html.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
+      if (m) return `https://www.youtube.com/watch?v=${m[1]}`;
     }
   } catch(e) {
-    console.warn('YouTube RSS lookup failed:', e.message);
+    console.warn('YouTube video search failed:', e.message);
   }
+
   return null;
 }
 
