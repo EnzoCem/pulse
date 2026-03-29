@@ -2173,37 +2173,15 @@ async function _findBlog(name, podcastUrl = '') {
   return results.find(r => r !== null) ?? null;
 }
 
-// RSS discovery specifically for publications/sources.
-// Unlike _findBlog, this:
-//   1. Does not reject feeds that contain iTunes namespace (WordPress sites often include it)
-//   2. Tries RSS autodiscovery on the homepage (<link rel="alternate" type="application/rss+xml">)
-//   3. Tries a broader set of common RSS paths
+// RSS discovery for publications/sources.
+// All candidates are checked IN PARALLEL — resolves on the first valid feed found.
+// Does NOT reject feeds containing iTunes namespace (WordPress publications include it).
 async function _findSourceRSS(name) {
-  const s1 = name.toLowerCase().replace(/\s+/g, '-');   // "big-think"
-  const s2 = name.toLowerCase().replace(/\s+/g, '');    // "bigthink"
+  const s1 = name.toLowerCase().replace(/\s+/g, '-');  // "big-think"
+  const s2 = name.toLowerCase().replace(/\s+/g, '');   // "bigthink"
 
-  // Candidate base domains to try
-  const domains = [
-    `https://${s2}.com`,
-    `https://www.${s2}.com`,
-    `https://${s1}.com`,
-    `https://www.${s1}.com`,
-  ];
-
-  // For each domain, try autodiscovery then fallback paths
-  const rssPaths = ['/feed', '/feed/', '/rss', '/rss.xml', '/rss/', '/feed.xml',
-                    '/atom.xml', '/index.xml', '/?feed=rss2', '/feeds/posts/default'];
-
-  async function proxyFetch(url, timeout = 6000) {
-    for (const proxy of ['', CORS_PRIMARY, CORS_FALLBACK]) {
-      try {
-        const r = await fetch((proxy ? proxy + encodeURIComponent(url) : url),
-          { signal: AbortSignal.timeout(timeout) });
-        if (r.ok) return await r.text();
-      } catch(_) {}
-    }
-    return null;
-  }
+  const domains  = [`https://${s2}.com`, `https://${s1}.com`, `https://www.${s2}.com`];
+  const rssPaths = ['/feed', '/feed/', '/rss', '/rss.xml', '/feed.xml', '/?feed=rss2', '/atom.xml'];
 
   function isValidFeed(text) {
     if (!text) return false;
@@ -2211,37 +2189,52 @@ async function _findSourceRSS(name) {
     return t.startsWith('<?xml') || t.startsWith('<rss') || t.startsWith('<feed');
   }
 
-  for (const domain of domains) {
-    // Step A: fetch homepage, look for RSS autodiscovery link
-    const homepage = await proxyFetch(domain, 5000);
-    if (homepage) {
-      // Parse <link rel="alternate" type="application/rss+xml" href="...">
-      const m = homepage.match(/<link[^>]+type=["']application\/(?:rss|atom)\+xml["'][^>]+href=["']([^"']+)["']/i)
-             || homepage.match(/<link[^>]+href=["']([^"']+)["'][^>]+type=["']application\/(?:rss|atom)\+xml["']/i);
-      if (m) {
-        let rssUrl = m[1];
-        // Resolve relative URLs
-        if (rssUrl.startsWith('/')) rssUrl = domain + rssUrl;
-        const feed = await proxyFetch(rssUrl, 5000);
-        if (isValidFeed(feed)) return rssUrl;
-      }
-
-      // Step B: try common RSS paths on this domain
-      for (const path of rssPaths) {
-        const url  = domain + path;
-        const feed = await proxyFetch(url, 4000);
-        if (isValidFeed(feed)) return url;
-      }
-    } else {
-      // Domain unreachable via direct fetch — try paths through proxy anyway
-      for (const path of rssPaths) {
-        const url  = domain + path;
-        const feed = await proxyFetch(url, 4000);
-        if (isValidFeed(feed)) return url;
-      }
+  // Try a URL directly then via one CORS proxy — returns text or null
+  async function tryFetch(url) {
+    for (const u of [url, CORS_PRIMARY + encodeURIComponent(url)]) {
+      try {
+        const r = await fetch(u, { signal: AbortSignal.timeout(4000) });
+        if (r.ok) return await r.text();
+      } catch(_) {}
     }
+    return null;
   }
-  return null;
+
+  // Return a promise that resolves to the first non-null result, or null if all fail
+  function firstOf(promises) {
+    return new Promise(resolve => {
+      let remaining = promises.length;
+      if (!remaining) return resolve(null);
+      promises.forEach(p => Promise.resolve(p).then(v => {
+        remaining--;
+        if (v) resolve(v);
+        else if (remaining === 0) resolve(null);
+      }).catch(() => { remaining--; if (remaining === 0) resolve(null); }));
+    });
+  }
+
+  // Kick off ALL path guesses in parallel
+  const pathChecks = domains.flatMap(d =>
+    rssPaths.map(async p => {
+      const text = await tryFetch(d + p);
+      return isValidFeed(text) ? d + p : null;
+    })
+  );
+
+  // Also kick off homepage autodiscovery in parallel
+  const homepageChecks = domains.map(async d => {
+    const html = await tryFetch(d);
+    if (!html) return null;
+    const m = html.match(/<link[^>]+type=["']application\/(?:rss|atom)\+xml["'][^>]+href=["']([^"']+)["']/i)
+           || html.match(/<link[^>]+href=["']([^"']+)["'][^>]+type=["']application\/(?:rss|atom)\+xml["']/i);
+    if (!m) return null;
+    let rssUrl = m[1];
+    if (rssUrl.startsWith('/')) rssUrl = d + rssUrl;
+    const feed = await tryFetch(rssUrl);
+    return isValidFeed(feed) ? rssUrl : null;
+  });
+
+  return firstOf([...pathChecks, ...homepageChecks]);
 }
 
 // How well does a suggestion name match the query? (0 = no match, 3 = exact)
