@@ -736,6 +736,43 @@
     border-radius: 50%; animation: spin 0.7s linear infinite;
   }
 
+  /* Type toggle (Person / Source) in add panel */
+  .type-toggle { display:flex; gap:6px; margin-bottom:18px; }
+  .type-btn {
+    flex:1; padding:8px 0; border-radius:6px; font-family:'JetBrains Mono',monospace;
+    font-size:11px; font-weight:600; letter-spacing:0.05em; cursor:pointer;
+    border:1px solid var(--border); background:none; color:var(--muted);
+    transition:background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .type-btn.active { background:var(--surface2); color:var(--text); border-color:var(--accent); }
+
+  /* Source badge on card */
+  .source-badge {
+    font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:0.08em;
+    text-transform:uppercase; color:var(--blog); background:rgba(160,232,74,0.1);
+    border:1px solid rgba(160,232,74,0.25); border-radius:3px; padding:1px 5px;
+    margin-left:6px; vertical-align:middle;
+  }
+
+  /* Source avatar (publication logo placeholder) */
+  .avatar-source {
+    width:52px; height:52px; border-radius:8px; background:var(--surface2);
+    border:1px solid var(--border); display:flex; align-items:center;
+    justify-content:center; font-size:24px; flex-shrink:0; cursor:pointer;
+    overflow:hidden;
+  }
+  .avatar-source img { width:100%; height:100%; object-fit:cover; border-radius:8px; }
+
+  /* Author byline on entry rows */
+  .entry-author {
+    font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--blog);
+    display:inline; margin-right:6px;
+  }
+  .detail-entry-author {
+    font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--blog);
+    margin-top:2px;
+  }
+
   /* History search results */
   .history-results { padding: 0 0 32px; }
   .hist-header {
@@ -931,11 +968,17 @@
 
   <!-- ADD PERSON PANEL -->
   <div class="add-panel" id="addPanel">
-    <h3>+ Track a New Person</h3>
+    <h3 id="addPanelTitle">+ Track a New Person</h3>
+
+    <!-- Person / Source toggle -->
+    <div class="type-toggle">
+      <button class="type-btn active" id="typePersonBtn" onclick="setAddType('person')">👤 Person</button>
+      <button class="type-btn"        id="typeSourceBtn" onclick="setAddType('source')">📰 Publication / Source</button>
+    </div>
 
     <!-- Step 1: search by name -->
     <div class="form-row" style="margin-bottom:8px">
-      <label>Name *</label>
+      <label id="f-name-label">Name *</label>
       <div class="search-name-row">
         <input type="text" id="f-name" placeholder="e.g. Michael Pollan — press Search to auto-fill"
                onkeydown="if(event.key==='Enter')searchPersonByName()">
@@ -971,9 +1014,9 @@
     <div class="feed-section-title">Feed URLs — paste any you have (leave blank to skip)</div>
     <div class="feed-inputs">
       <div class="feed-row">
-        <div class="platform-badge" style="background:#2a1a10; font-size:16px;">🎙</div>
+        <div class="platform-badge" style="background:#2a1a10; font-size:16px;" id="f-podcast-icon">🎙</div>
         <div class="form-row" style="flex:1">
-          <label>Podcast RSS</label>
+          <label id="f-podcast-label">Podcast RSS</label>
           <input type="text" id="f-podcast" placeholder="https://feeds.example.com/...">
         </div>
       </div>
@@ -1206,6 +1249,7 @@ let listenedIds   = new Set(); // entry IDs explicitly marked as listened
 let searchQuery   = '';   // current search filter string
 let _currentModalEntry = null;
 let _episodeDB    = null; // IndexedDB handle for full episode history
+let _addType      = 'person'; // 'person' | 'source' — current Add panel mode
 let pwConfig      = {     // persisted in pw-config
   anthropicKey:      '',
   notebookLMUrl:     '',
@@ -1656,7 +1700,7 @@ function loadState() {
     // and backfill tags from DEMO_PERSONS for any demo person that has none yet
     const demoMap = Object.fromEntries(DEMO_PERSONS.map(p => [p.id, p]));
     persons = persons.map(p => {
-      const base  = { tags: [], fetchErrors: [], ...p };
+      const base  = { tags: [], fetchErrors: [], type: 'person', ...p };
       const demo  = demoMap[p.id];
       // Backfill tags for demo persons that have none
       if (base.tags.length === 0 && demo?.tags?.length) base.tags = demo.tags;
@@ -1754,14 +1798,16 @@ function renderPersonDetail() {
   if (!person) return;
   const wrap = document.getElementById('personDetailContent');
 
+  const fallbackAvatar = person.type === 'source' ? '📰' : getInitials(person.name);
   const avatarHtml = person.avatar
-    ? `<img src="${escHtml(person.avatar)}" onerror="this.parentElement.innerHTML='${getInitials(person.name)}'"/>`
-    : getInitials(person.name);
+    ? `<img src="${escHtml(person.avatar)}" onerror="this.parentElement.innerHTML='${fallbackAvatar}'"/>`
+    : fallbackAvatar;
 
   const failedFeeds = person.fetchErrors || [];
 
+  const isSourcePerson = person.type === 'source';
   const feedRows = [
-    { key: 'podcast', label: '🎙 Podcast',     ph: 'RSS feed URL' },
+    { key: 'podcast', label: isSourcePerson ? '📰 Main RSS Feed' : '🎙 Podcast', ph: isSourcePerson ? 'https://bigthink.com/feed/' : 'RSS feed URL' },
     { key: 'youtube', label: '▶ YouTube',      ph: '@handle, URL, or UC… ID' },
     { key: 'twitter', label: '🐦 X / Twitter', ph: 'rss.app RSS URL — not x.com/username' },
     { key: 'blog',    label: '✍ Blog',         ph: 'RSS or Atom feed URL' },
@@ -1850,7 +1896,7 @@ function renderPersonDetail() {
 
     <!-- Feeds -->
     <div class="detail-feeds">
-      <div class="detail-section-title">Feed URLs</div>
+      <div class="detail-section-title">Feed URLs ${isSourcePerson ? '<span class="source-badge">publication / source</span>' : ''}</div>
       ${feedRows}
       <div class="detail-save-row">
         <button class="detail-save-btn" onclick="savePersonDetail()">Save Changes</button>
@@ -1989,8 +2035,25 @@ function toggleAddPanel() {
     document.getElementById('suggestArea').innerHTML = '';
     _suggestions = [];
     _formTags = []; renderFormTagChips();
+    setAddType('person'); // always reset to person mode
     document.getElementById('f-name').focus();
   }
+}
+
+function setAddType(type) {
+  _addType = type;
+  document.getElementById('typePersonBtn').classList.toggle('active', type === 'person');
+  document.getElementById('typeSourceBtn').classList.toggle('active', type === 'source');
+
+  const isSource = type === 'source';
+  document.getElementById('addPanelTitle').textContent   = isSource ? '+ Track a Publication or Source' : '+ Track a New Person';
+  document.getElementById('f-name-label').textContent    = isSource ? 'Source Name *' : 'Name *';
+  document.getElementById('f-name').placeholder          = isSource ? 'e.g. Big Think, Quanta Magazine, Aeon' : 'e.g. Michael Pollan — press Search to auto-fill';
+  document.getElementById('f-podcast-label').textContent = isSource ? 'Main RSS Feed' : 'Podcast RSS';
+  document.getElementById('f-podcast-icon').textContent  = isSource ? '📰' : '🎙';
+  // Clear suggestions when switching type
+  document.getElementById('suggestArea').innerHTML = '';
+  _suggestions = [];
 }
 
 // ── AUTO-DISCOVER BY NAME ──
@@ -2128,10 +2191,30 @@ async function searchPersonByName() {
   const btn  = document.getElementById('searchBtn');
   const area = document.getElementById('suggestArea');
   btn.disabled = true; btn.textContent = 'Searching…';
-  area.innerHTML = '<div class="suggest-status">Searching podcasts, YouTube, blogs…</div>';
   _suggestions = [];
 
-  // ── iTunes first (podcast source of truth), then YouTube + blog in parallel ──
+  // ── SOURCE mode: skip iTunes, just find YouTube + blog/RSS ──
+  if (_addType === 'source') {
+    area.innerHTML = '<div class="suggest-status">Searching YouTube and RSS feeds…</div>';
+    const [ytId, blogUrl] = await Promise.all([
+      _findYouTube(query, ''),
+      _findBlog(query, ''),
+    ]);
+    btn.disabled = false; btn.textContent = '🔍 Search';
+    if (ytId)    document.getElementById('f-youtube').value = ytId;
+    if (blogUrl) document.getElementById('f-podcast').value = blogUrl;
+    if (ytId || blogUrl) {
+      area.innerHTML = `<div class="suggest-status" style="text-align:left">
+        ✓ Auto-filled${ytId ? ' YouTube' : ''}${ytId && blogUrl ? ' +' : ''}${blogUrl ? ' RSS feed' : ''} — review and adjust below.</div>`;
+    } else {
+      area.innerHTML = `<div class="suggest-status">No feeds found — paste URLs manually below.</div>`;
+    }
+    return;
+  }
+
+  area.innerHTML = '<div class="suggest-status">Searching podcasts, YouTube, blogs…</div>';
+
+  // ── PERSON mode: iTunes first (podcast source of truth), then YouTube + blog in parallel ──
   const itunesData = await fetch(
     `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=podcast&entity=podcast&limit=6`,
     { signal: AbortSignal.timeout(8000) }
@@ -2256,6 +2339,7 @@ async function addPerson() {
   const person = {
     id:   name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now(),
     name,
+    type:   _addType,   // 'person' | 'source'
     desc:   document.getElementById('f-desc').value.trim(),
     avatar: document.getElementById('f-avatar').value.trim(),
     feeds: {
@@ -2346,9 +2430,12 @@ function renderPersonCard(person, prepend = false, delay = 0) {
   if (currentFilter !== 'all') entries = entries.filter(e => e.platform === currentFilter);
 
   const activePlatforms = Object.entries(person.feeds).filter(([,v]) => v).map(([k]) => k);
-  const avatarContent   = person.avatar
-    ? `<img src="${person.avatar}" alt="" onerror="this.parentElement.innerHTML='${getInitials(person.name)}'"/>`
-    : getInitials(person.name);
+  const isSource = person.type === 'source';
+
+  // Avatar: photo for persons, logo/favicon for sources (falls back to 📰)
+  const avatarContent = person.avatar
+    ? `<img src="${person.avatar}" alt="" onerror="this.parentElement.innerHTML='${isSource ? '📰' : getInitials(person.name)}'"/>`
+    : (isSource ? '📰' : getInitials(person.name));
 
   const platformIconsHTML = activePlatforms.map(p =>
     `<div class="picon" style="background:${hexAlpha(p)}" data-tip="${PLATFORMS[p].label}">${PLATFORMS[p].emoji}</div>`
@@ -2389,6 +2476,7 @@ function renderPersonCard(person, prepend = false, delay = 0) {
           <div class="entry-content">
             <div class="entry-title">${escHtml(entry.title)}</div>
             <div class="entry-meta">
+              ${isSource && entry.author ? `<span class="entry-author">${escHtml(entry.author)}</span>` : ''}
               <span class="entry-platform-label">${pl.emoji} ${pl.label}</span>
               <span class="entry-time">${timeAgo(entry.date)}</span>
               ${eTagsHtml ? `<span style="display:inline-flex;gap:3px;margin-left:4px">${eTagsHtml}</span>` : ''}
@@ -2414,6 +2502,7 @@ function renderPersonCard(person, prepend = false, delay = 0) {
       <div class="avatar">${avatarContent}</div>
       <div class="card-person-info">
         <div class="card-person-name">${escHtml(person.name)}
+          ${isSource ? '<span class="source-badge">source</span>' : ''}
           ${newCount > 0 ? `<span style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--accent);font-weight:400;margin-left:6px">${newCount} new</span>` : ''}
         </div>
         ${person.desc ? `<div class="card-person-desc">${escHtml(person.desc)}</div>` : ''}
@@ -2572,13 +2661,21 @@ async function fetchPerson(person) {
     newEntries.push(...entries);
   }
 
-  // Only fetch YouTube channel RSS when there is no podcast RSS.
-  // When a podcast RSS exists, episodes come from there; the YouTube channel ID
-  // is only used to help find video links (via title search), not to source content.
-  if (person.feeds.youtube && !person.feeds.podcast)
-    await pull(`https://www.youtube.com/feeds/videos.xml?channel_id=${person.feeds.youtube}`, 'youtube');
-  if (person.feeds.podcast) await pull(person.feeds.podcast, 'podcast');
-  if (person.feeds.blog)    await pull(person.feeds.blog,    'blog');
+  if (person.type === 'source') {
+    // Sources: fetch YouTube videos + RSS articles independently (both shown, deduplicated)
+    // The podcast field is used as "Main RSS Feed" for sources, stored as 'blog' platform
+    if (person.feeds.youtube)
+      await pull(`https://www.youtube.com/feeds/videos.xml?channel_id=${person.feeds.youtube}`, 'youtube');
+    if (person.feeds.podcast) await pull(person.feeds.podcast, 'blog');
+    if (person.feeds.blog)    await pull(person.feeds.blog,    'blog');
+  } else {
+    // Persons: only fetch YouTube channel RSS when there is no podcast RSS.
+    // YouTube channel ID is used to help find video links, not to source content.
+    if (person.feeds.youtube && !person.feeds.podcast)
+      await pull(`https://www.youtube.com/feeds/videos.xml?channel_id=${person.feeds.youtube}`, 'youtube');
+    if (person.feeds.podcast) await pull(person.feeds.podcast, 'podcast');
+    if (person.feeds.blog)    await pull(person.feeds.blog,    'blog');
+  }
   // Only pull twitter if the URL actually looks like an RSS feed, not a social profile page
   if (person.feeds.twitter && _looksLikeRssUrl(person.feeds.twitter))
     await pull(person.feeds.twitter, 'twitter');
@@ -2671,12 +2768,21 @@ async function fetchRSS(url, platform, personId) {
       const transcriptEl  = Array.from(item.children).find(el => el.localName === 'transcript');
       const transcriptUrl = transcriptEl?.getAttribute('url') || '';
 
+      // Author: <dc:creator>, <author>, or <itunes:author>
+      const authorRaw = getText(item, 'creator')     // dc:creator (most common in blog RSS)
+                     || getText(item, 'author')       // RSS 2.0 author or Atom <author><name>
+                     || getText(item, 'name')         // Atom nested <author><name>
+                     || '';
+      // RSS 2.0 author format: "email@domain.com (Name)" → extract just the name
+      const author = authorRaw.replace(/^[^(]*\(([^)]+)\)$/, '$1').trim();
+
       results.push({
         id, personId, platform,
         title: cleanText(title),
         link,
-        desc:  cleanText(rawDesc).slice(0, 5000),   // full summary, not truncated
+        desc:  cleanText(rawDesc).slice(0, 5000),
         transcriptUrl,
+        author: author || '',
         date:  dateStr ? new Date(dateStr).toISOString() : new Date().toISOString(),
       });
     });
@@ -2728,6 +2834,7 @@ function openEntry(entry) {
       <span style="font-size:11px;color:var(--muted)">${escHtml(person.name||'')}</span>
     </div>
     <div class="modal-title">${escHtml(entry.title)}</div>
+    ${entry.author ? `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--blog);margin-bottom:2px">by ${escHtml(entry.author)}</div>` : ''}
     <div class="modal-meta">${formatFullDate(entry.date)}</div>
     ${descHtml || ''}
     <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
@@ -2786,13 +2893,13 @@ function openEntry(entry) {
   }
 
   const isPodcast        = entry.platform === 'podcast';
+  const isSource         = person.type === 'source';
   const hasYouTubeChannel = !!(person.feeds?.youtube);
 
-  if (isPodcast) {
-    // Always show Sound button if there's an RSS link
+  if (isPodcast && !isSource) {
+    // Person podcast: show Sound button + search for YouTube video in background
     _showSound(entry.link);
 
-    // Show Video button — search in background
     _showVideoSearching();
     findYouTubeForPodcast(person, entry).then(ytUrl => {
       if (ytUrl) _videoFound(ytUrl);
