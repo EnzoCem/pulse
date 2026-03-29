@@ -22,6 +22,7 @@
     --twitter:   #4ab8e8;
     --blog:      #a0e84a;
     --substack:  #e84aaa;
+    --books:     #c084fc;
     --radius:    6px;
   }
 
@@ -1046,6 +1047,13 @@
           <input type="text" id="f-blog" placeholder="https://example.substack.com/feed">
         </div>
       </div>
+      <div class="feed-row">
+        <div class="platform-badge" style="background:#1a1030; font-size:16px;">📚</div>
+        <div class="form-row" style="flex:1">
+          <label>Books search query <span style="color:var(--muted);font-weight:400">(optional — defaults to person name)</span></label>
+          <input type="text" id="f-books" placeholder="e.g. Tim Ferriss  or  leave blank for auto">
+        </div>
+      </div>
     </div>
 
     <div class="form-actions">
@@ -1125,6 +1133,9 @@
         </button>
         <button class="filter-chip" data-filter="blog" onclick="setFilter('blog')">
           <span class="chip-dot" style="background:var(--blog)"></span>Blog
+        </button>
+        <button class="filter-chip" data-filter="books" onclick="setFilter('books')">
+          <span class="chip-dot" style="background:var(--books)"></span>Books
         </button>
       </div>
       <div style="position:relative;display:flex;align-items:center">
@@ -1224,6 +1235,7 @@ const PLATFORMS = {
   youtube: { label: 'YouTube', color: 'var(--youtube)', emoji: '▶' },
   twitter: { label: 'X',       color: 'var(--twitter)', emoji: '𝕏' },
   blog:    { label: 'Blog',    color: 'var(--blog)',    emoji: '✍' },
+  books:   { label: 'Books',   color: 'var(--books)',   emoji: '📚' },
 };
 
 // If a person has a YouTube channel but no podcast RSS, their YouTube entries
@@ -1313,11 +1325,12 @@ function renderTagFilterRow() {
   row.innerHTML = '<span class="tag-filter-label">Topics:</span>' + allTags.map(tag => {
     const c  = tagColor(tag);
     const on = activeTag === tag;
-    return `<button class="tag-chip${on?' active':''}"
-      style="background:${on ? c : c+'22'};color:${on ? '#111' : c}"
-      onclick="setTagFilter('${escHtml(tag)}')"
-      title="${on ? 'Click to clear filter' : 'Filter by ' + tag}"
-      >${escHtml(tag)}${on ? ' ×' : ''}</button>`;
+    return `<span class="tag-chip${on?' active':''}"
+      style="background:${on ? c : c+'22'};color:${on ? '#111' : c};display:inline-flex;align-items:center;gap:4px">
+      <span onclick="setTagFilter('${escHtml(tag)}')" style="cursor:pointer" title="${on ? 'Clear filter' : 'Filter by '+tag}">${escHtml(tag)}</span>
+      <button class="tag-remove" type="button" title="Rename tag" style="font-size:10px;opacity:0.7" onclick="renameGlobalTag('${escHtml(tag)}')">✎</button>
+      <button class="tag-remove" type="button" title="Remove tag from all people" onclick="removeGlobalTag('${escHtml(tag)}')">×</button>
+    </span>`;
   }).join('');
 }
 function setTagFilter(tag) {
@@ -1325,6 +1338,27 @@ function setTagFilter(tag) {
   renderTagFilterRow();
   renderAllCards();
   if (currentView === 'timeline') renderTimeline();
+}
+function renameGlobalTag(oldTag) {
+  const newTag = prompt(`Rename "${oldTag}" to:`, oldTag);
+  if (!newTag || newTag.trim() === oldTag) return;
+  const n = newTag.trim().toLowerCase();
+  persons.forEach(p => {
+    if (p.tags) p.tags = p.tags.map(t => t === oldTag ? n : t);
+  });
+  if (activeTag === oldTag) activeTag = n;
+  saveState();
+  renderTagFilterRow();
+  renderAllCards();
+}
+function removeGlobalTag(tag) {
+  persons.forEach(p => {
+    if (p.tags) p.tags = p.tags.filter(t => t !== tag);
+  });
+  if (activeTag === tag) activeTag = null;
+  saveState();
+  renderTagFilterRow();
+  renderAllCards();
 }
 
 // ── INLINE TAG EDITOR (per card) ──
@@ -1836,6 +1870,7 @@ function renderPersonDetail() {
     { key: 'youtube', label: '▶ YouTube',      ph: '@handle, URL, or UC… ID' },
     { key: 'twitter', label: '🐦 X / Twitter', ph: '@username  or  x.com/username  or  rss.app URL' },
     { key: 'blog',    label: '✍ Blog',         ph: 'RSS or Atom feed URL' },
+    { key: 'books',   label: '📚 Books',        ph: 'Search query (blank = auto from name)' },
   ].map(f => {
     const val = person.feeds[f.key] || '';
     // Red ⚠ = last fetch actually failed; Amber ⚠ = URL doesn't look like RSS at all
@@ -2025,6 +2060,7 @@ async function savePersonDetail() {
   p.feeds.podcast = document.getElementById('df-podcast')?.value.trim() || '';
   p.feeds.blog    = document.getElementById('df-blog')?.value.trim()    || '';
   p.feeds.twitter = document.getElementById('df-twitter')?.value.trim() || '';
+  p.feeds.books   = document.getElementById('df-books')?.value.trim()   || '';
 
   // Resolve YouTube: accepts URL, @handle, username, or raw channel ID
   const ytRaw = document.getElementById('df-youtube')?.value.trim() || '';
@@ -2467,6 +2503,7 @@ async function addPerson() {
       youtube: ytId,
       twitter: document.getElementById('f-twitter').value.trim(),
       blog:    document.getElementById('f-blog').value.trim(),
+      books:   document.getElementById('f-books')?.value.trim() || '',
     },
     itunesId: matchedSug?.itunesId || null,
     entries: [], lastUpdated: null, loading: false,
@@ -2475,7 +2512,7 @@ async function addPerson() {
 
   persons.unshift(person);
   saveState();
-  ['f-name','f-desc','f-website','f-avatar','f-podcast','f-youtube','f-twitter','f-blog'].forEach(id => {
+  ['f-name','f-desc','f-website','f-avatar','f-podcast','f-youtube','f-twitter','f-blog','f-books'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('suggestArea').innerHTML = '';
@@ -2728,7 +2765,7 @@ function rebuildAllEntries() {
 
 // ── FETCH ──
 // Platform preference when deduplicating (higher index = preferred)
-const PLATFORM_PREF = { twitter: 0, blog: 1, podcast: 2, youtube: 3 };
+const PLATFORM_PREF = { twitter: 0, blog: 1, podcast: 2, youtube: 3, books: 1 };
 
 function titleKey(title) {
   return title.toLowerCase()
@@ -2801,6 +2838,10 @@ async function fetchPerson(person) {
     if (person.feeds.podcast)   tasks.push(pull(person.feeds.podcast, 'podcast'));
     if (person.feeds.blog)      tasks.push(pull(person.feeds.blog,    'blog'));
   }
+
+  // Books: query Google Books API (uses feeds.books override or falls back to person name)
+  const booksQuery = (person.feeds.books || '').trim() || person.name;
+  tasks.push(fetchBooks(booksQuery, person.id).then(e => newEntries.push(...e)));
 
   // Twitter: full RSS URL or bare handle via Nitter
   if (person.feeds.twitter && _looksLikeRssUrl(person.feeds.twitter)) {
@@ -3383,7 +3424,7 @@ const getText    = (el, tag) => { const n = el.querySelector(tag); return n ? (n
 const cleanText  = str => str.replace(/<[^>]*>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/\s+/g,' ').trim();
 const escHtml    = str => String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const getInitials = name => name.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
-const hexAlpha   = p => ({ podcast:'#2a1510', youtube:'#2a1010', twitter:'#101a2a', blog:'#141f10' }[p]||'#1a1a22');
+const hexAlpha   = p => ({ podcast:'#2a1510', youtube:'#2a1010', twitter:'#101a2a', blog:'#141f10', books:'#1a1030' }[p]||'#1a1a22');
 
 // Returns false if the URL is obviously a social-media profile page rather than an RSS/Atom feed.
 // Used to skip bad twitter field values silently rather than counting them as fetch failures.
@@ -3405,6 +3446,36 @@ function _looksLikeRssUrl(url) {
     }
     return true; // Everything else is assumed to be an RSS URL
   } catch(_) { return false; }
+}
+
+// Fetch books for a person via the free Google Books API (no key required).
+// query defaults to the person's name if not overridden in feeds.books.
+async function fetchBooks(query, personId) {
+  const url = `https://www.googleapis.com/books/v1/volumes?q=inauthor:${encodeURIComponent('"' + query + '"')}&maxResults=20&orderBy=newest&printType=books&langRestrict=en`;
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    if (!data.items) return [];
+    return data.items.map(item => {
+      const v    = item.volumeInfo || {};
+      const date = v.publishedDate ? new Date(v.publishedDate).toISOString() : new Date(0).toISOString();
+      const link = v.canonicalVolumeLink || v.infoLink || `https://books.google.com/books?id=${item.id}`;
+      return {
+        id:       `${personId}-books-${item.id}`.slice(0, 80),
+        personId,
+        platform: 'books',
+        title:    v.title || '(Untitled)',
+        link,
+        desc:     (v.description || '').replace(/<[^>]*>/g, '').slice(0, 300),
+        date,
+        thumbnail: v.imageLinks?.thumbnail?.replace('http:', 'https:') || '',
+      };
+    });
+  } catch(e) {
+    console.warn('[Pulse] Books fetch failed:', e.message);
+    return [];
+  }
 }
 
 // Try each Nitter instance in sequence; resolve with the first RSS XML that comes back.
