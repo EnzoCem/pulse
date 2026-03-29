@@ -676,6 +676,47 @@
   }
   .detail-delete-btn:hover { color: #e84a4a; border-color: #e84a4a; }
 
+  .detail-history-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .detail-history-btn {
+    background: none; border: 1px solid var(--border); color: var(--muted);
+    border-radius: 4px; font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; padding: 7px 14px; cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .detail-history-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .detail-history-btn:disabled { opacity: 0.5; cursor: default; }
+  .detail-history-msg { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
+
+  /* History search results */
+  .history-results { padding: 0 0 32px; }
+  .hist-header {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted);
+    padding: 18px 0 10px; border-top: 1px solid var(--border); margin-top: 8px;
+    display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  }
+  .hist-sub { font-size: 10px; color: var(--border); }
+  .hist-list { display: flex; flex-direction: column; gap: 2px; }
+  .hist-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; border-radius: 6px; cursor: pointer;
+    transition: background 0.12s;
+  }
+  .hist-row:hover { background: var(--surface2); }
+  .hist-avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+  .hist-avatar-ph {
+    width: 32px; height: 32px; border-radius: 50%; background: var(--surface2);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted);
+    flex-shrink: 0;
+  }
+  .hist-info { flex: 1; min-width: 0; }
+  .hist-title {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .hist-meta { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .hist-person { color: var(--podcast); }
+
   .detail-entries { border-top: 1px solid var(--border); padding-top: 24px; }
   .detail-entry-filter { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
   .detail-entry-row {
@@ -963,6 +1004,7 @@
   <!-- PEOPLE VIEW -->
   <div class="view active" id="view-people">
     <div class="persons-grid" id="personsGrid"></div>
+    <div class="history-results" id="historyResults" style="display:none"></div>
     <div class="empty-state" id="emptyState" style="display:none">
       <div class="empty-state-icon">👁</div>
       <h2>Nobody here yet</h2>
@@ -1058,6 +1100,7 @@ let entryNotes    = {};   // { entryId: string }   — free-text notes per episo
 let listenedIds   = new Set(); // entry IDs explicitly marked as listened
 let searchQuery   = '';   // current search filter string
 let _currentModalEntry = null;
+let _episodeDB    = null; // IndexedDB handle for full episode history
 
 // ── TAG COLORS ──
 const TAG_PALETTE = ['#7c6fcd','#4ab8e8','#a0e84a','#e8744a','#e84a98','#4ae8b8','#e8c84a','#c87c4a'];
@@ -1559,7 +1602,7 @@ function switchView(v) {
   // Body class drives CSS visibility of back btn, toolbar, tag row, tabs
   document.body.classList.toggle('view-person', v === 'person');
   if (v === 'timeline') renderTimeline();
-  if (v === 'people')   renderAllCards();
+  if (v === 'people')   { renderAllCards(); renderHistoryResults(); }
 }
 
 // ── PERSON DETAIL PAGE ──
@@ -1683,6 +1726,11 @@ function renderPersonDetail() {
         <span class="detail-save-msg" id="detail-save-msg">Saved</span>
         <button class="detail-delete-btn" onclick="deletePersonFromDetail()">Delete Person</button>
       </div>
+      <div class="detail-history-row" id="detail-history-row">
+        <button class="detail-history-btn" id="load-history-btn"
+          onclick="loadPodcastHistory(currentPerson.id)">⬇ Load Full History</button>
+        <span class="detail-history-msg" id="history-status-msg"></span>
+      </div>
     </div>
 
     <!-- Entries -->
@@ -1698,6 +1746,21 @@ function renderPersonDetail() {
     </div>`;
 
   renderDetailTagChips();
+
+  // Show "Load Full History" only for persons with a podcast feed
+  const histRow = document.getElementById('detail-history-row');
+  if (histRow) {
+    if (person.feeds.podcast) {
+      histRow.style.display = '';
+      // Async: update button label if episodes already loaded
+      countEpisodesForPerson(person.id).then(n => {
+        const btn = document.getElementById('load-history-btn');
+        if (btn && n > 0) btn.textContent = `⟳ Reload History (${n} stored)`;
+      }).catch(() => {});
+    } else {
+      histRow.style.display = 'none';
+    }
+  }
 }
 
 function previewDetailAvatar(url) {
@@ -1960,6 +2023,7 @@ async function searchPersonByName() {
       podcastUrl:  r.feedUrl,
       podcastName: r.collectionName,
       trackCount:  r.trackCount,
+      itunesId:    r.collectionId || null,
       youtubeId:   null,
       blogUrl:     null,
     });
@@ -2052,17 +2116,22 @@ async function addPerson() {
     if (addBtn) { addBtn.textContent = 'Add Person'; addBtn.disabled = false; }
   }
 
+  // Pick itunesId from whichever suggestion was applied (matched by podcast URL)
+  const podcastUrl = document.getElementById('f-podcast').value.trim();
+  const matchedSug = _suggestions.find(s => s.podcastUrl && s.podcastUrl === podcastUrl);
+
   const person = {
     id:   name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now(),
     name,
     desc:   document.getElementById('f-desc').value.trim(),
     avatar: document.getElementById('f-avatar').value.trim(),
     feeds: {
-      podcast: document.getElementById('f-podcast').value.trim(),
+      podcast: podcastUrl,
       youtube: ytId,
       twitter: document.getElementById('f-twitter').value.trim(),
       blog:    document.getElementById('f-blog').value.trim(),
     },
+    itunesId: matchedSug?.itunesId || null,
     entries: [], lastUpdated: null, loading: false,
     tags: [..._formTags],
   };
@@ -2683,6 +2752,129 @@ function _syncListenedBtn() {
   btn.style.borderColor = done ? 'var(--blog)' : '';
 }
 
+// ── EPISODE HISTORY (IndexedDB) ──
+function openEpisodeDB() {
+  if (_episodeDB) return Promise.resolve(_episodeDB);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('pulse-episodes', 1);
+    req.onupgradeneeded = e => {
+      const store = e.target.result.createObjectStore('episodes', { keyPath: 'id' });
+      store.createIndex('personId', 'personId', { unique: false });
+    };
+    req.onsuccess = e => { _episodeDB = e.target.result; resolve(_episodeDB); };
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+async function storeEpisodes(episodes) {
+  const db = await openEpisodeDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('episodes', 'readwrite');
+    const store = tx.objectStore('episodes');
+    episodes.forEach(ep => store.put(ep));
+    tx.oncomplete = () => resolve(episodes.length);
+    tx.onerror    = e => reject(e.target.error);
+  });
+}
+
+async function countEpisodesForPerson(personId) {
+  const db = await openEpisodeDB();
+  return new Promise((resolve, reject) => {
+    const tx    = db.transaction('episodes', 'readonly');
+    const index = tx.objectStore('episodes').index('personId');
+    const req   = index.count(personId);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+async function searchEpisodesInDB(personId, query) {
+  const db = await openEpisodeDB();
+  return new Promise((resolve, reject) => {
+    const tx    = db.transaction('episodes', 'readonly');
+    const index = tx.objectStore('episodes').index('personId');
+    const req   = index.getAll(personId);
+    req.onsuccess = () => {
+      const q = query.toLowerCase();
+      resolve(req.result.filter(ep =>
+        (ep.title || '').toLowerCase().includes(q) ||
+        (ep.desc  || '').toLowerCase().includes(q)
+      ));
+    };
+    req.onerror = e => reject(e.target.error);
+  });
+}
+
+async function loadPodcastHistory(personId) {
+  const person = persons.find(p => p.id === personId);
+  if (!person) return;
+
+  const btn = document.getElementById('load-history-btn');
+  const msg = document.getElementById('history-status-msg');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  if (msg) msg.textContent = '';
+
+  try {
+    // Step 1: Resolve itunesId if not already saved
+    let itunesId = person.itunesId;
+    if (!itunesId) {
+      const search = await fetch(
+        `https://itunes.apple.com/search?term=${encodeURIComponent(person.name)}&media=podcast&entity=podcast&limit=5`,
+        { signal: AbortSignal.timeout(8000) }
+      ).then(r => r.json()).catch(() => ({ results: [] }));
+      const match = search.results.find(r => r.feedUrl === person.feeds.podcast) || search.results[0];
+      if (match?.collectionId) {
+        itunesId = match.collectionId;
+        person.itunesId = itunesId;
+        saveState();
+      }
+    }
+
+    if (!itunesId) {
+      if (msg) msg.textContent = 'Could not find iTunes ID for this podcast.';
+      if (btn) { btn.disabled = false; btn.textContent = '⬇ Load Full History'; }
+      return;
+    }
+
+    // Step 2: Fetch up to 200 episodes from iTunes
+    const data = await fetch(
+      `https://itunes.apple.com/lookup?id=${itunesId}&entity=podcastEpisode&limit=200`,
+      { signal: AbortSignal.timeout(15000) }
+    ).then(r => r.json()).catch(() => ({ results: [] }));
+
+    const episodes = (data.results || [])
+      .filter(r => r.wrapperType === 'podcastEpisode')
+      .map(r => ({
+        id:       `${personId}|itunes|${r.trackId || r.trackViewUrl}`,
+        personId,
+        title:    r.trackName || '',
+        desc:     (r.description || r.shortDescription || '').slice(0, 500),
+        link:     r.episodeUrl || r.trackViewUrl || '',
+        date:     r.releaseDate || '',
+        platform: 'podcast',
+      }));
+
+    if (episodes.length === 0) {
+      if (msg) msg.textContent = 'No episodes found.';
+      if (btn) { btn.disabled = false; btn.textContent = '⬇ Load Full History'; }
+      return;
+    }
+
+    await storeEpisodes(episodes);
+    const total = await countEpisodesForPerson(personId);
+
+    if (msg) msg.textContent = `${total} episodes stored`;
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ Reload History'; }
+
+    // Re-run search if active
+    if (searchQuery) setSearch(searchQuery);
+
+  } catch (err) {
+    if (msg) msg.textContent = 'Error: ' + err.message;
+    if (btn) { btn.disabled = false; btn.textContent = '⬇ Load Full History'; }
+  }
+}
+
 // ── SEARCH ──
 function setSearch(q) {
   searchQuery = q.trim().toLowerCase();
@@ -2690,6 +2882,75 @@ function setSearch(q) {
   if (clearBtn) clearBtn.style.display = searchQuery ? '' : 'none';
   if (currentView === 'people')   renderAllCards();
   if (currentView === 'timeline') renderTimeline();
+  renderHistoryResults();
+}
+
+async function renderHistoryResults() {
+  const section = document.getElementById('historyResults');
+  if (!section) return;
+
+  if (!searchQuery || currentView !== 'people') {
+    section.style.display = 'none';
+    section.innerHTML = '';
+    return;
+  }
+
+  // Search all persons that have episode history
+  const allMatches = [];
+  for (const person of persons) {
+    if (!person.itunesId) continue;
+    try {
+      const hits = await searchEpisodesInDB(person.id, searchQuery);
+      hits.forEach(ep => allMatches.push({ ep, person }));
+    } catch (_) {}
+  }
+
+  if (allMatches.length === 0) {
+    section.style.display = 'none';
+    section.innerHTML = '';
+    return;
+  }
+
+  // Sort by date desc
+  allMatches.sort((a, b) => (b.ep.date > a.ep.date ? 1 : -1));
+
+  const rows = allMatches.map(({ ep, person }) => {
+    const d = ep.date ? new Date(ep.date).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' }) : '';
+    const avatarHtml = person.avatar
+      ? `<img class="hist-avatar" src="${escHtml(person.avatar)}" onerror="this.style.display='none'">`
+      : `<div class="hist-avatar-ph">${getInitials(person.name)}</div>`;
+    return `
+      <div class="hist-row" onclick='openHistoryEntry(${JSON.stringify(ep).replace(/'/g,"&#39;")})'>
+        ${avatarHtml}
+        <div class="hist-info">
+          <div class="hist-title">${escHtml(ep.title)}</div>
+          <div class="hist-meta"><span class="hist-person">${escHtml(person.name)}</span>${d ? ` · ${d}` : ''}</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  section.innerHTML = `
+    <div class="hist-header">
+      📚 Episode History — ${allMatches.length} match${allMatches.length !== 1 ? 'es' : ''} for "<em>${escHtml(searchQuery)}</em>"
+      <span class="hist-sub">(from loaded history — use ⬇ Load Full History in person detail)</span>
+    </div>
+    <div class="hist-list">${rows}</div>`;
+  section.style.display = '';
+}
+
+function openHistoryEntry(ep) {
+  const person = persons.find(p => p.id === ep.personId);
+  // Construct a minimal entry object for the modal
+  const entry = {
+    id:       ep.id,
+    personId: ep.personId,
+    platform: ep.platform || 'podcast',
+    title:    ep.title,
+    link:     ep.link,
+    desc:     ep.desc,
+    date:     ep.date,
+  };
+  openEntry(entry, person);
 }
 
 function _searchCountBar(count) {
