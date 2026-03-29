@@ -687,6 +687,38 @@
   .detail-history-btn:disabled { opacity: 0.5; cursor: default; }
   .detail-history-msg { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
 
+  /* Settings button */
+  .settings-btn {
+    background: none; border: 1px solid var(--border); color: var(--muted);
+    border-radius: 6px; font-size: 14px; padding: 5px 9px; cursor: pointer;
+    transition: color 0.15s, border-color 0.15s; line-height: 1; flex-shrink: 0;
+  }
+  .settings-btn:hover, .settings-btn.active { color: var(--accent); border-color: var(--accent); }
+
+  /* Settings panel — reuses .add-panel styles */
+  .settings-section-title {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
+  }
+
+  /* AI notes display inside modal */
+  .ai-notes-output {
+    margin-top: 10px; padding: 12px 14px;
+    background: #0d1a1a; border: 1px solid #1e3a3a; border-radius: 6px;
+    font-family: 'Libre Baskerville', Georgia, serif; font-size: 13px;
+    line-height: 1.7; color: var(--text); white-space: pre-wrap;
+  }
+  .ai-notes-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.08em; text-transform: uppercase; color: #4ab8e8;
+    margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+  }
+  .ai-notes-spinner {
+    display: inline-block; width: 10px; height: 10px;
+    border: 2px solid #4ab8e820; border-top-color: #4ab8e8;
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+  }
+
   /* History search results */
   .history-results { padding: 0 0 32px; }
   .hist-header {
@@ -957,6 +989,40 @@
     </div>
   </div>
 
+  <!-- SETTINGS PANEL -->
+  <div class="add-panel" id="settingsPanel">
+    <h3>⚙ Settings</h3>
+    <div class="settings-section-title">AI Integration</div>
+    <div class="form-row">
+      <label>Anthropic API Key <span style="color:var(--muted);font-weight:400">(stored locally, never sent anywhere except api.anthropic.com)</span></label>
+      <input type="password" id="cfg-anthropic-key" placeholder="sk-ant-…" autocomplete="off">
+    </div>
+    <div class="settings-section-title" style="margin-top:16px">NotebookLM</div>
+    <div class="form-row">
+      <label>Notebook URL <span style="color:var(--muted);font-weight:400">(your NotebookLM notebook link)</span></label>
+      <input type="text" id="cfg-notebooklm-url" placeholder="https://notebooklm.google.com/notebook/…">
+    </div>
+    <div class="form-row" style="margin-top:4px">
+      <label style="color:var(--muted);font-size:10px;line-height:1.5">
+        When you click 📔 NotebookLM on an episode, the YouTube URL is copied to your clipboard and your notebook opens.
+        Paste the URL as a new source inside NotebookLM.
+      </label>
+    </div>
+    <div class="settings-section-title" style="margin-top:16px">AI Notes Prompt</div>
+    <div class="form-row">
+      <label>Custom instructions for AI notes <span style="color:var(--muted);font-weight:400">(optional — appended to the default prompt)</span></label>
+      <textarea id="cfg-ai-prompt" rows="3"
+        style="background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);
+               font-family:'JetBrains Mono',monospace;font-size:11px;padding:8px;resize:vertical;
+               width:100%;box-sizing:border-box"
+        placeholder="e.g. Focus on topics related to consciousness and biology. Flag any book recommendations."></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="toggleSettings()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+    </div>
+  </div>
+
   <!-- TOOLBAR -->
   <div class="toolbar">
     <div class="toolbar-left">
@@ -993,6 +1059,7 @@
                  color:var(--muted);cursor:pointer;font-size:14px;padding:0;line-height:1"
           onclick="setSearch('');document.getElementById('searchInput').value='';document.getElementById('searchInput').focus()">×</button>
       </div>
+      <button class="settings-btn" id="settingsBtn" onclick="toggleSettings()" title="Settings">⚙</button>
     </div>
   </div>
   <!-- Search count bar -->
@@ -1055,6 +1122,8 @@
     <div class="modal-actions">
       <a   id="transcriptBtn"   href="#" target="_blank" rel="noopener" class="btn btn-ghost" style="display:none">🔍 Find Transcript</a>
       <button id="ytTranscriptBtn" class="btn btn-ghost" style="display:none" onclick="loadYouTubeTranscript()">📄 Load Transcript</button>
+      <button id="notebookLMBtn"  class="btn btn-ghost" style="display:none" onclick="openInNotebookLM()">📔 NotebookLM</button>
+      <button id="aiNotesBtn"     class="btn btn-ghost" style="display:none" onclick="generateAINotes()">🤖 AI Notes</button>
       <a id="modalLink"      href="#" target="_blank" rel="noopener" class="btn btn-primary" style="display:none">Open →</a>
       <a id="modalSoundLink" href="#" target="_blank" rel="noopener" class="btn btn-ghost"   style="display:none">🔊 Open Sound</a>
       <a id="modalVideoLink" href="#" target="_blank" rel="noopener" class="btn btn-primary" style="display:none">▶ Open Video</a>
@@ -1101,6 +1170,11 @@ let listenedIds   = new Set(); // entry IDs explicitly marked as listened
 let searchQuery   = '';   // current search filter string
 let _currentModalEntry = null;
 let _episodeDB    = null; // IndexedDB handle for full episode history
+let pwConfig      = {     // persisted in pw-config
+  anthropicKey:    '',
+  notebookLMUrl:   '',
+  aiPromptExtra:   '',
+};
 
 // ── TAG COLORS ──
 const TAG_PALETTE = ['#7c6fcd','#4ab8e8','#a0e84a','#e8744a','#e84a98','#4ae8b8','#e8c84a','#c87c4a'];
@@ -1521,6 +1595,17 @@ function saveState() {
     localStorage.setItem('pw-listened',   JSON.stringify([...listenedIds]));
     localStorage.setItem('pw-entry-tags', JSON.stringify(entryTags));
     localStorage.setItem('pw-notes',      JSON.stringify(entryNotes));
+  } catch(e) {}
+}
+
+function saveConfig() {
+  try { localStorage.setItem('pw-config', JSON.stringify(pwConfig)); } catch(e) {}
+}
+
+function loadConfig() {
+  try {
+    const saved = localStorage.getItem('pw-config');
+    if (saved) pwConfig = { ...pwConfig, ...JSON.parse(saved) };
   } catch(e) {}
 }
 
@@ -2614,7 +2699,8 @@ function openEntry(entry) {
         onfocus="this.style.borderColor='var(--accent)'"
         onblur="this.style.borderColor='var(--border)'"></textarea>
     </div>
-    <div id="transcriptArea"></div>`;
+    <div id="transcriptArea"></div>
+    <div id="ai-notes-area" style="display:none"></div>`;
 
   const elOpen  = document.getElementById('modalLink');
   const elSound = document.getElementById('modalSoundLink');
@@ -2680,19 +2766,29 @@ function openEntry(entry) {
   // Sync listened button state
   _syncListenedBtn();
 
-  // Reset transcript area
+  // Reset transcript + AI areas
   document.getElementById('transcriptArea').innerHTML = '';
+  const aiArea = document.getElementById('ai-notes-area');
+  if (aiArea) { aiArea.innerHTML = ''; aiArea.style.display = 'none'; }
 
   const tBtn   = document.getElementById('transcriptBtn');
   const ytBtn  = document.getElementById('ytTranscriptBtn');
+  const nbBtn  = document.getElementById('notebookLMBtn');
+  const aiBtn  = document.getElementById('aiNotesBtn');
   tBtn.style.display  = 'none';
   ytBtn.style.display = 'none';
+  nbBtn.style.display = 'none';
+  aiBtn.style.display = 'none';
   ytBtn.disabled = false;
+  aiBtn.disabled = false;
   ytBtn.textContent = '📄 Load Transcript';
+  aiBtn.textContent = '🤖 AI Notes';
 
   if (entry.platform === 'youtube') {
     // YouTube: inline transcript via captions API
     ytBtn.style.display = '';
+    nbBtn.style.display = '';   // NotebookLM — video URL is entry.link
+    aiBtn.style.display = '';   // AI Notes
 
   } else if (entry.platform === 'podcast') {
     if (entry.transcriptUrl) {
@@ -2713,6 +2809,8 @@ function openEntry(entry) {
       tBtn.title       = `Search: ${query}`;
     }
     tBtn.style.display = '';
+    nbBtn.style.display = '';   // NotebookLM — video URL resolved async by findYouTubeForPodcast
+    aiBtn.style.display = '';   // AI Notes
   }
 
   document.getElementById('modalOverlay').classList.add('open');
@@ -3004,8 +3102,267 @@ function formatFullDate(dateStr) {
   return d.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit' });
 }
 
+// ── SETTINGS ──
+function toggleSettings() {
+  const panel = document.getElementById('settingsPanel');
+  const btn   = document.getElementById('settingsBtn');
+  const isOpen = panel.classList.contains('open');
+  // Close add panel if open
+  document.getElementById('addPanel').classList.remove('open');
+  if (isOpen) {
+    panel.classList.remove('open');
+    btn.classList.remove('active');
+  } else {
+    // Populate fields from current config
+    document.getElementById('cfg-anthropic-key').value  = pwConfig.anthropicKey  || '';
+    document.getElementById('cfg-notebooklm-url').value = pwConfig.notebookLMUrl || '';
+    document.getElementById('cfg-ai-prompt').value      = pwConfig.aiPromptExtra  || '';
+    panel.classList.add('open');
+    btn.classList.add('active');
+  }
+}
+
+function saveSettings() {
+  pwConfig.anthropicKey  = document.getElementById('cfg-anthropic-key').value.trim();
+  pwConfig.notebookLMUrl = document.getElementById('cfg-notebooklm-url').value.trim();
+  pwConfig.aiPromptExtra = document.getElementById('cfg-ai-prompt').value.trim();
+  saveConfig();
+  const panel = document.getElementById('settingsPanel');
+  const btn   = document.getElementById('settingsBtn');
+  panel.classList.remove('open');
+  btn.classList.remove('active');
+  _showToast('Settings saved');
+}
+
+function _showToast(msg, duration = 2500) {
+  let toast = document.getElementById('pulse-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'pulse-toast';
+    toast.style.cssText = `
+      position:fixed;bottom:64px;left:50%;transform:translateX(-50%);
+      background:#1a2a1a;border:1px solid #4ab8e8;color:#e8e6e0;
+      font-family:'JetBrains Mono',monospace;font-size:12px;
+      padding:9px 18px;border-radius:6px;z-index:9999;
+      opacity:0;transition:opacity 0.2s;pointer-events:none;white-space:nowrap`;
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.style.opacity = '1';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { toast.style.opacity = '0'; }, duration);
+}
+
+// ── NOTEBOOKLM ──
+async function openInNotebookLM() {
+  const entry = _currentModalEntry;
+  if (!entry) return;
+
+  // Get the YouTube URL — prefer the video link already resolved in the modal
+  const elVideo = document.getElementById('modalVideoLink');
+  let ytUrl = elVideo?.href && elVideo.href !== '#' ? elVideo.href : null;
+
+  // For YouTube entries the entry.link IS the video URL
+  if (!ytUrl && entry.platform === 'youtube') ytUrl = entry.link;
+
+  if (!ytUrl) {
+    _showToast('No YouTube URL found for this episode yet — wait for video lookup to finish', 3500);
+    return;
+  }
+
+  // Copy URL to clipboard
+  try { await navigator.clipboard.writeText(ytUrl); } catch(_) {}
+
+  // Open their NotebookLM notebook (or generic NotebookLM if none configured)
+  const nbUrl = pwConfig.notebookLMUrl || 'https://notebooklm.google.com';
+  window.open(nbUrl, '_blank', 'noopener');
+  _showToast('📋 Video URL copied — paste as a new source in NotebookLM');
+}
+
+// ── AI NOTES (Claude API) ──
+async function getYouTubeTranscriptText(videoId) {
+  // Headless version of loadYouTubeTranscript — returns plain text or null
+  try {
+    const pageUrl  = `https://www.youtube.com/watch?v=${videoId}`;
+    const pageResp = await fetch(CORS_PRIMARY + encodeURIComponent(pageUrl),
+      { signal: AbortSignal.timeout(15000) });
+    if (!pageResp.ok) return null;
+    const html  = await pageResp.text();
+    const match = html.match(/"captionTracks":(\[.*?\])/);
+    if (!match) return null;
+    const tracks = JSON.parse(match[1]);
+    const track  = tracks.find(t => t.languageCode === 'en' || t.vssId?.startsWith('.en'))
+                || tracks.find(t => t.kind !== 'asr' && t.languageCode?.startsWith('en'))
+                || tracks[0];
+    if (!track?.baseUrl) return null;
+    const ttResp = await fetch(CORS_PRIMARY + encodeURIComponent(track.baseUrl),
+      { signal: AbortSignal.timeout(10000) });
+    if (!ttResp.ok) return null;
+    const xml  = await ttResp.text();
+    const doc  = new DOMParser().parseFromString(xml, 'text/xml');
+    const segs = Array.from(doc.querySelectorAll('text'))
+      .map(t => t.textContent
+        .replace(/&amp;/g,'&').replace(/&quot;/g,'"')
+        .replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').trim())
+      .filter(Boolean);
+    if (!segs.length) return null;
+    const paras = [];
+    for (let i = 0; i < segs.length; i += 15) paras.push(segs.slice(i, i+15).join(' '));
+    return paras.join('\n\n');
+  } catch(_) { return null; }
+}
+
+async function callClaude(apiKey, systemPrompt, userContent) {
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key':                              apiKey,
+      'anthropic-version':                      '2023-06-01',
+      'anthropic-dangerous-direct-browser-iab': 'true',
+      'content-type':                           'application/json',
+    },
+    body: JSON.stringify({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 1024,
+      system:     systemPrompt,
+      messages:   [{ role: 'user', content: userContent }],
+    }),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `API error ${resp.status}`);
+  }
+  const data = await resp.json();
+  return data.content[0].text;
+}
+
+async function generateAINotes() {
+  const entry = _currentModalEntry;
+  if (!entry) return;
+
+  if (!pwConfig.anthropicKey) {
+    _showToast('Add your Anthropic API key in ⚙ Settings first', 3500);
+    toggleSettings();
+    return;
+  }
+
+  const btn = document.getElementById('aiNotesBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Thinking…';
+
+  // Show spinner in the notes area
+  const aiArea = document.getElementById('ai-notes-area');
+  if (aiArea) {
+    aiArea.innerHTML = `
+      <div class="ai-notes-label"><span class="ai-notes-spinner"></span> Generating notes…</div>`;
+    aiArea.style.display = '';
+  }
+
+  try {
+    const person   = persons.find(p => p.id === entry.personId) || {};
+    const title    = entry.title || 'Unknown episode';
+    const date     = entry.date  ? new Date(entry.date).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' }) : '';
+    const descText = entry.desc  || '';
+
+    // Try to get transcript — for podcasts find YouTube video first
+    let transcript = null;
+    let sourceNote = 'description only (no transcript available)';
+
+    if (entry.platform === 'youtube') {
+      const videoId = extractYouTubeId(entry.link || '');
+      if (videoId) {
+        transcript = await getYouTubeTranscriptText(videoId);
+        if (transcript) sourceNote = 'YouTube transcript';
+      }
+    } else if (entry.platform === 'podcast') {
+      // Try the already-found video URL first (in modal video button)
+      const elVideo  = document.getElementById('modalVideoLink');
+      const videoUrl = elVideo?.href && elVideo.href !== '#' ? elVideo.href : null;
+      const videoId  = videoUrl ? extractYouTubeId(videoUrl) : null;
+      if (videoId) {
+        transcript = await getYouTubeTranscriptText(videoId);
+        if (transcript) sourceNote = 'YouTube transcript';
+      }
+      // Fallback: search for the video
+      if (!transcript) {
+        const ytUrl = await findYouTubeForPodcast(person, entry);
+        if (ytUrl) {
+          const vid = extractYouTubeId(ytUrl);
+          if (vid) {
+            transcript = await getYouTubeTranscriptText(vid);
+            if (transcript) sourceNote = 'YouTube transcript (auto-found)';
+          }
+        }
+      }
+    }
+
+    // Build content for Claude
+    const contentLines = [
+      `Episode: "${title}"`,
+      person.name ? `Podcast / Show: ${person.name}` : '',
+      date        ? `Date: ${date}`                   : '',
+      '',
+      transcript
+        ? `TRANSCRIPT:\n${transcript}`
+        : `EPISODE DESCRIPTION:\n${descText || '(no description available)'}`,
+    ].filter(l => l !== undefined).join('\n');
+
+    // Build system prompt
+    const defaultInstructions = [
+      'You are a research assistant helping analyse podcast and video content.',
+      'Given the content below, produce concise structured notes with the following sections:',
+      '• **Key Topics** — main subjects discussed (bullet list)',
+      '• **Key Insights** — the most interesting or surprising ideas (bullet list)',
+      '• **Notable Quotes** — 1–3 direct quotes worth remembering (if transcript available)',
+      '• **People & Resources Mentioned** — names, books, papers, tools referenced',
+      '• **My Takeaways** — leave this section blank for the user to fill in',
+      'Be concise. Use plain text, not markdown headers. Separate sections with blank lines.',
+    ].join('\n');
+    const systemPrompt = pwConfig.aiPromptExtra
+      ? `${defaultInstructions}\n\nAdditional user instructions: ${pwConfig.aiPromptExtra}`
+      : defaultInstructions;
+
+    const result = await callClaude(pwConfig.anthropicKey, systemPrompt, contentLines);
+
+    // Prepend a header and store in notes
+    const header   = `[AI Notes — ${new Date().toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })} · source: ${sourceNote}]\n\n`;
+    const fullNote = header + result;
+
+    // Append to existing notes (don't overwrite manual notes)
+    const existing = (entryNotes[entry.id] || '').trim();
+    entryNotes[entry.id] = existing ? existing + '\n\n' + fullNote : fullNote;
+    saveState();
+
+    // Update the notes textarea in the modal
+    const notesEl = document.getElementById('modal-notes');
+    if (notesEl) notesEl.value = entryNotes[entry.id];
+
+    // Show in AI notes area
+    if (aiArea) {
+      aiArea.innerHTML = `
+        <div class="ai-notes-label">🤖 AI Notes <span style="color:var(--muted);font-weight:400">(${sourceNote})</span></div>
+        <div class="ai-notes-output">${escHtml(result)}</div>`;
+    }
+
+    btn.disabled = false;
+    btn.textContent = '🤖 AI Notes ✓';
+    // Update note indicator on card rows
+    document.querySelectorAll(`[data-eid="${CSS.escape(entry.id)}"]`)
+      .forEach(el => el.dataset.hasNotes = '1');
+
+  } catch(err) {
+    if (aiArea) {
+      aiArea.innerHTML = `<div class="ai-notes-label" style="color:#e84a4a">Error: ${escHtml(err.message)}</div>`;
+    }
+    btn.disabled = false;
+    btn.textContent = '🤖 AI Notes';
+    _showToast('AI Notes failed: ' + err.message, 4000);
+  }
+}
+
 // ── INIT ──
 loadState();
+loadConfig();
 renderAllCards();
 renderTagFilterRow();
 updateStatus();
