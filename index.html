@@ -997,6 +997,10 @@
         <input type="text" id="f-desc" placeholder="e.g. Author, food journalist">
       </div>
       <div class="form-row">
+        <label>Website</label>
+        <input type="text" id="f-website" placeholder="https://lexfridman.com">
+      </div>
+      <div class="form-row">
         <label>Avatar URL (optional)</label>
         <input type="text" id="f-avatar" placeholder="https://...">
       </div>
@@ -1701,7 +1705,7 @@ function loadState() {
     // and backfill tags from DEMO_PERSONS for any demo person that has none yet
     const demoMap = Object.fromEntries(DEMO_PERSONS.map(p => [p.id, p]));
     persons = persons.map(p => {
-      const base  = { tags: [], fetchErrors: [], type: 'person', ...p };
+      const base  = { tags: [], fetchErrors: [], type: 'person', website: '', ...p };
       const demo  = demoMap[p.id];
       // Backfill tags for demo persons that have none
       if (base.tags.length === 0 && demo?.tags?.length) base.tags = demo.tags;
@@ -1881,6 +1885,13 @@ function renderPersonDetail() {
           <input class="detail-input" id="df-desc" value="${escHtml(person.desc||'')}" placeholder="Short description…">
         </div>
         <div class="detail-field">
+          <div class="detail-lbl">Website
+            ${person.website ? `<a href="${escHtml(person.website)}" target="_blank" rel="noopener"
+              style="color:var(--accent);font-size:10px;margin-left:6px;text-decoration:none" title="Open website">🌐</a>` : ''}
+          </div>
+          <input class="detail-input" id="df-website" value="${escHtml(person.website||'')}" placeholder="https://lexfridman.com">
+        </div>
+        <div class="detail-field">
           <div class="detail-lbl">Avatar URL</div>
           <input class="detail-input" id="df-avatar" value="${escHtml(person.avatar||'')}" placeholder="https://…"
                  oninput="previewDetailAvatar(this.value)">
@@ -1986,9 +1997,10 @@ async function savePersonDetail() {
   const btn = document.querySelector('.detail-save-btn');
   const msg = document.getElementById('detail-save-msg');
 
-  p.name   = document.getElementById('df-name')?.value.trim()   || p.name;
-  p.desc   = document.getElementById('df-desc')?.value.trim()   || '';
-  p.avatar = document.getElementById('df-avatar')?.value.trim() || '';
+  p.name    = document.getElementById('df-name')?.value.trim()    || p.name;
+  p.desc    = document.getElementById('df-desc')?.value.trim()    || '';
+  p.website = document.getElementById('df-website')?.value.trim() || '';
+  p.avatar  = document.getElementById('df-avatar')?.value.trim()  || '';
   p.tags   = [..._detailFormTags];
   p.feeds.podcast = document.getElementById('df-podcast')?.value.trim() || '';
   p.feeds.blog    = document.getElementById('df-blog')?.value.trim()    || '';
@@ -2402,12 +2414,19 @@ async function addPerson() {
   const podcastUrl = document.getElementById('f-podcast').value.trim();
   const matchedSug = _suggestions.find(s => s.podcastUrl && s.podcastUrl === podcastUrl);
 
+  // Auto-derive website from podcast RSS URL if not filled in
+  const websiteInput = document.getElementById('f-website').value.trim();
+  const derivedWebsite = websiteInput || (() => {
+    try { const u = new URL(podcastUrl); return u.origin; } catch(_) { return ''; }
+  })();
+
   const person = {
     id:   name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now(),
     name,
-    type:   _addType,   // 'person' | 'source'
-    desc:   document.getElementById('f-desc').value.trim(),
-    avatar: document.getElementById('f-avatar').value.trim(),
+    type:    _addType,   // 'person' | 'source'
+    desc:    document.getElementById('f-desc').value.trim(),
+    website: derivedWebsite,
+    avatar:  document.getElementById('f-avatar').value.trim(),
     feeds: {
       podcast: podcastUrl,
       youtube: ytId,
@@ -2421,7 +2440,7 @@ async function addPerson() {
 
   persons.unshift(person);
   saveState();
-  ['f-name','f-desc','f-avatar','f-podcast','f-youtube','f-twitter','f-blog'].forEach(id => {
+  ['f-name','f-desc','f-website','f-avatar','f-podcast','f-youtube','f-twitter','f-blog'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('suggestArea').innerHTML = '';
@@ -2570,6 +2589,10 @@ function renderPersonCard(person, prepend = false, delay = 0) {
         <div class="card-person-name">${escHtml(person.name)}
           ${isSource ? '<span class="source-badge">source</span>' : ''}
           ${newCount > 0 ? `<span style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--accent);font-weight:400;margin-left:6px">${newCount} new</span>` : ''}
+          ${person.website ? `<a href="${escHtml(person.website)}" target="_blank" rel="noopener"
+            onclick="event.stopPropagation()"
+            style="font-size:11px;color:var(--muted);margin-left:4px;text-decoration:none;vertical-align:middle"
+            title="${escHtml(person.website)}">🌐</a>` : ''}
         </div>
         ${person.desc ? `<div class="card-person-desc">${escHtml(person.desc)}</div>` : ''}
         <div class="person-tags">
@@ -3533,6 +3556,7 @@ function buildPersonNote(person) {
   ].join('\n');
 
   const feedLines = [
+    person.website        ? `- 🌐 [Website](${person.website})`           : '',
     person.feeds?.podcast ? `- 🎙 [Podcast RSS](${person.feeds.podcast})` : '',
     ytUrl                 ? `- ▶ [YouTube](${ytUrl})`                     : '',
     person.feeds?.blog    ? `- ✍️ [Blog](${person.feeds.blog})`           : '',
