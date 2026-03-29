@@ -298,7 +298,16 @@
     font-size: 11px; opacity: 0.7;
   }
 
-  .card-entries { padding: 4px 0; }
+  .card-entries {
+    padding: 4px 0;
+    max-height: 340px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .card-entries::-webkit-scrollbar { width: 4px; }
+  .card-entries::-webkit-scrollbar-track { background: transparent; }
+  .card-entries::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
   .entry-row {
     display: flex; align-items: flex-start; gap: 10px;
@@ -2636,7 +2645,7 @@ function renderPersonCard(person, prepend = false, delay = 0) {
       ${activePlatforms.length === 0 ? 'No feeds configured' : 'No entries yet — click refresh'}
     </div>`;
   } else {
-    entriesHTML = entries.slice(0, 4).map(entry => {
+    entriesHTML = entries.map(entry => {
       const isNew  = !seenIds.has(entry.id);
       const pl     = getPlatform(entry, person);
       const eTags  = entryTags[entry.id] || [];
