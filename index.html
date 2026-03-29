@@ -687,6 +687,22 @@
   .detail-history-btn:disabled { opacity: 0.5; cursor: default; }
   .detail-history-msg { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
 
+  /* Vault picker */
+  .vault-pick-btn {
+    background: none; border: 1px solid var(--border); color: var(--text);
+    border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    padding: 7px 14px; cursor: pointer; white-space: nowrap;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .vault-pick-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .vault-name-tag {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: var(--blog); background: rgba(160,232,74,0.08);
+    border: 1px solid rgba(160,232,74,0.2); border-radius: 4px;
+    padding: 3px 9px; display: none;
+  }
+  .vault-name-tag.visible { display: inline-block; }
+
   /* Settings button */
   .settings-btn {
     background: none; border: 1px solid var(--border); color: var(--muted);
@@ -1017,6 +1033,24 @@
                width:100%;box-sizing:border-box"
         placeholder="e.g. Focus on topics related to consciousness and biology. Flag any book recommendations."></textarea>
     </div>
+    <div class="settings-section-title" style="margin-top:16px">Obsidian Vault</div>
+    <div class="form-row">
+      <label>Vault folder <span style="color:var(--muted);font-weight:400">(pick once — browser remembers permission)</span></label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="vault-pick-btn" id="vaultPickBtn" onclick="pickObsidianVault()">📂 Pick Vault Folder</button>
+        <span class="vault-name-tag" id="vaultNameTag"></span>
+      </div>
+    </div>
+    <div class="form-row" style="margin-top:8px">
+      <label>Subfolder inside vault <span style="color:var(--muted);font-weight:400">(default: Pulse)</span></label>
+      <input type="text" id="cfg-obsidian-subfolder" placeholder="Pulse">
+    </div>
+    <div class="form-row" style="margin-top:6px;display:flex;align-items:center;gap:10px">
+      <input type="checkbox" id="cfg-obsidian-autosave" style="width:auto;margin:0">
+      <label for="cfg-obsidian-autosave" style="margin:0;cursor:pointer">
+        Auto-save to Obsidian when AI Notes are generated
+      </label>
+    </div>
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="toggleSettings()">Cancel</button>
       <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
@@ -1124,6 +1158,7 @@
       <button id="ytTranscriptBtn" class="btn btn-ghost" style="display:none" onclick="loadYouTubeTranscript()">📄 Load Transcript</button>
       <button id="notebookLMBtn"  class="btn btn-ghost" style="display:none" onclick="openInNotebookLM()">📔 NotebookLM</button>
       <button id="aiNotesBtn"     class="btn btn-ghost" style="display:none" onclick="generateAINotes()">🤖 AI Notes</button>
+      <button id="obsidianBtn"    class="btn btn-ghost" style="display:none" onclick="sendEpisodeToObsidian()">📓 Obsidian</button>
       <a id="modalLink"      href="#" target="_blank" rel="noopener" class="btn btn-primary" style="display:none">Open →</a>
       <a id="modalSoundLink" href="#" target="_blank" rel="noopener" class="btn btn-ghost"   style="display:none">🔊 Open Sound</a>
       <a id="modalVideoLink" href="#" target="_blank" rel="noopener" class="btn btn-primary" style="display:none">▶ Open Video</a>
@@ -1171,10 +1206,13 @@ let searchQuery   = '';   // current search filter string
 let _currentModalEntry = null;
 let _episodeDB    = null; // IndexedDB handle for full episode history
 let pwConfig      = {     // persisted in pw-config
-  anthropicKey:    '',
-  notebookLMUrl:   '',
-  aiPromptExtra:   '',
+  anthropicKey:      '',
+  notebookLMUrl:     '',
+  aiPromptExtra:     '',
+  obsidianSubfolder: 'Pulse',
+  obsidianAutoSave:  false,
 };
+let _vaultHandle = null;  // FileSystemDirectoryHandle for Obsidian vault
 
 // ── TAG COLORS ──
 const TAG_PALETTE = ['#7c6fcd','#4ab8e8','#a0e84a','#e8744a','#e84a98','#4ae8b8','#e8c84a','#c87c4a'];
@@ -1815,6 +1853,8 @@ function renderPersonDetail() {
         <button class="detail-history-btn" id="load-history-btn"
           onclick="loadPodcastHistory(currentPerson.id)">⬇ Load Full History</button>
         <span class="detail-history-msg" id="history-status-msg"></span>
+        <button class="detail-history-btn" style="margin-left:auto"
+          onclick="exportPersonToObsidian(currentPerson.id)">📓 Export to Obsidian</button>
       </div>
     </div>
 
@@ -2775,20 +2815,25 @@ function openEntry(entry) {
   const ytBtn  = document.getElementById('ytTranscriptBtn');
   const nbBtn  = document.getElementById('notebookLMBtn');
   const aiBtn  = document.getElementById('aiNotesBtn');
-  tBtn.style.display  = 'none';
-  ytBtn.style.display = 'none';
-  nbBtn.style.display = 'none';
-  aiBtn.style.display = 'none';
+  const obsBtn = document.getElementById('obsidianBtn');
+  tBtn.style.display   = 'none';
+  ytBtn.style.display  = 'none';
+  nbBtn.style.display  = 'none';
+  aiBtn.style.display  = 'none';
+  obsBtn.style.display = 'none';
   ytBtn.disabled = false;
   aiBtn.disabled = false;
-  ytBtn.textContent = '📄 Load Transcript';
-  aiBtn.textContent = '🤖 AI Notes';
+  obsBtn.disabled = false;
+  ytBtn.textContent  = '📄 Load Transcript';
+  aiBtn.textContent  = '🤖 AI Notes';
+  obsBtn.textContent = '📓 Obsidian';
 
   if (entry.platform === 'youtube') {
     // YouTube: inline transcript via captions API
     ytBtn.style.display = '';
-    nbBtn.style.display = '';   // NotebookLM — video URL is entry.link
-    aiBtn.style.display = '';   // AI Notes
+    nbBtn.style.display  = '';   // NotebookLM — video URL is entry.link
+    aiBtn.style.display  = '';   // AI Notes
+    obsBtn.style.display = '';   // Obsidian
 
   } else if (entry.platform === 'podcast') {
     if (entry.transcriptUrl) {
@@ -2809,8 +2854,9 @@ function openEntry(entry) {
       tBtn.title       = `Search: ${query}`;
     }
     tBtn.style.display = '';
-    nbBtn.style.display = '';   // NotebookLM — video URL resolved async by findYouTubeForPodcast
-    aiBtn.style.display = '';   // AI Notes
+    nbBtn.style.display  = '';   // NotebookLM — video URL resolved async by findYouTubeForPodcast
+    aiBtn.style.display  = '';   // AI Notes
+    obsBtn.style.display = '';   // Obsidian
   }
 
   document.getElementById('modalOverlay').classList.add('open');
@@ -3102,6 +3148,284 @@ function formatFullDate(dateStr) {
   return d.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit' });
 }
 
+// ── OBSIDIAN / FILE SYSTEM ──
+
+// IndexedDB store for the FileSystemDirectoryHandle
+// (handles can't be serialised to localStorage)
+function _openVaultDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('pulse-vault', 1);
+    req.onupgradeneeded = e =>
+      e.target.result.createObjectStore('handles', { keyPath: 'id' });
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+async function _saveVaultHandle(handle) {
+  const db = await _openVaultDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('handles', 'readwrite');
+    tx.objectStore('handles').put({ id: 'vault', handle });
+    tx.oncomplete = resolve;
+    tx.onerror    = e => reject(e.target.error);
+  });
+}
+
+async function _loadVaultHandle() {
+  try {
+    const db = await _openVaultDB();
+    return new Promise((resolve) => {
+      const tx  = db.transaction('handles', 'readonly');
+      const req = tx.objectStore('handles').get('vault');
+      req.onsuccess = () => resolve(req.result?.handle || null);
+      req.onerror   = () => resolve(null);
+    });
+  } catch(_) { return null; }
+}
+
+async function _restoreVaultHandle() {
+  const handle = await _loadVaultHandle();
+  if (!handle) return;
+  try {
+    // Check if we still have permission (may need to re-prompt on some browsers)
+    const perm = await handle.queryPermission({ mode: 'readwrite' });
+    if (perm === 'granted') {
+      _vaultHandle = handle;
+      _refreshVaultNameTag();
+    }
+    // If 'prompt', we can request it silently — but only inside a user gesture.
+    // We'll request it lazily when the user tries to write.
+  } catch(_) {}
+}
+
+function _refreshVaultNameTag() {
+  const tag = document.getElementById('vaultNameTag');
+  if (!tag) return;
+  if (_vaultHandle) {
+    tag.textContent = '✓ ' + _vaultHandle.name;
+    tag.classList.add('visible');
+  } else {
+    tag.classList.remove('visible');
+  }
+}
+
+async function pickObsidianVault() {
+  if (!window.showDirectoryPicker) {
+    _showToast('File System Access API not supported — use Chrome or Edge', 4000);
+    return;
+  }
+  try {
+    const handle = await window.showDirectoryPicker({ mode: 'readwrite', id: 'obsidian-vault' });
+    _vaultHandle = handle;
+    await _saveVaultHandle(handle);
+    _refreshVaultNameTag();
+    _showToast('✓ Vault folder set: ' + handle.name);
+  } catch(e) {
+    if (e.name !== 'AbortError') _showToast('Could not access folder: ' + e.message, 3500);
+  }
+}
+
+// Ensure readwrite permission is active (may need re-prompt after browser restart)
+async function _ensureVaultPermission() {
+  if (!_vaultHandle) return false;
+  let perm = await _vaultHandle.queryPermission({ mode: 'readwrite' });
+  if (perm === 'prompt') {
+    perm = await _vaultHandle.requestPermission({ mode: 'readwrite' });
+  }
+  return perm === 'granted';
+}
+
+// Write markdown to vault/subfolder/…/filename.md — creates directories as needed
+async function writeObsidianNote(relativePath, content) {
+  if (!await _ensureVaultPermission()) {
+    _showToast('No Obsidian vault selected — pick one in ⚙ Settings', 3500);
+    return false;
+  }
+  const subfolder = pwConfig.obsidianSubfolder || 'Pulse';
+  const allParts  = [subfolder, ...relativePath.split('/')].filter(Boolean);
+  let dir = _vaultHandle;
+  for (const part of allParts.slice(0, -1)) {
+    dir = await dir.getDirectoryHandle(part, { create: true });
+  }
+  const fileName = allParts[allParts.length - 1];
+  const fileHandle = await dir.getFileHandle(fileName, { create: true });
+  const writable   = await fileHandle.createWritable();
+  await writable.write(content);
+  await writable.close();
+  return true;
+}
+
+// Sanitise a string for use as an Obsidian filename / folder name
+function sanitizeFileName(str) {
+  return (str || 'Untitled')
+    .replace(/[\\/:*?"<>|#^[\]]/g, '')   // forbidden chars
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 100);
+}
+
+// ── NOTE BUILDERS ──
+
+function buildEpisodeNote(entry, person) {
+  const title      = entry.title || 'Untitled';
+  const dateStr    = entry.date  ? new Date(entry.date).toISOString().slice(0,10) : '';
+  const dateHuman  = entry.date  ? new Date(entry.date).toLocaleDateString('en-US',
+                       { year:'numeric', month:'long', day:'numeric' }) : '';
+  const platform   = entry.platform || 'podcast';
+  const tags       = (person?.tags || []).map(t => `  - ${t}`).join('\n');
+  const ytUrl      = platform === 'youtube' ? (entry.link || '') : (document.getElementById('modalVideoLink')?.href || '');
+  const audioUrl   = platform === 'podcast' ? (entry.link || '') : '';
+  const listened   = listenedIds.has(entry.id);
+  const personName = sanitizeFileName(person?.name || entry.personId);
+  const desc       = (entry.desc || '').replace(/\n/g, '\n> ');
+  const notes      = entryNotes[entry.id] || '';
+  const eTags      = (entryTags[entry.id] || []).map(t => `  - ${t}`).join('\n');
+
+  const frontmatter = [
+    '---',
+    `title: "${title.replace(/"/g, "'")}"`,
+    `person: "[[${personName}]]"`,
+    dateStr     ? `date: ${dateStr}`               : '',
+    `platform: ${platform}`,
+    tags        ? `tags:\n${tags}`                 : 'tags: []',
+    eTags       ? `episode_tags:\n${eTags}`        : '',
+    ytUrl       ? `youtube: "${ytUrl}"`            : '',
+    audioUrl    ? `audio: "${audioUrl}"`           : '',
+    `listened: ${listened}`,
+    'source: pulse',
+    '---',
+  ].filter(Boolean).join('\n');
+
+  const body = [
+    `# ${title}`,
+    '',
+    `> [[${personName}]] · ${dateHuman} · ${platform === 'youtube' ? '▶ YouTube' : platform === 'podcast' ? '🎙 Podcast' : platform}`,
+    '',
+    desc ? `## Description\n\n> ${desc}\n` : '',
+    notes ? `## Notes\n\n${notes}\n` : '## Notes\n\n_(empty)_\n',
+    ytUrl    ? `## Links\n\n- [▶ Watch on YouTube](${ytUrl})\n${audioUrl ? `- [🔊 Listen](${audioUrl})\n` : ''}` : (audioUrl ? `## Links\n\n- [🔊 Listen](${audioUrl})\n` : ''),
+  ].filter(s => s !== '').join('\n');
+
+  return frontmatter + '\n\n' + body;
+}
+
+function buildPersonNote(person) {
+  const name   = person.name || 'Unknown';
+  const tags   = (person.tags || []).map(t => `  - ${t}`).join('\n');
+  const ytUrl  = person.feeds?.youtube ? `https://www.youtube.com/channel/${person.feeds.youtube}` : '';
+  const recent = (person.entries || []).slice(0,10).map(e => {
+    const d = e.date ? new Date(e.date).toISOString().slice(0,10) : '??';
+    const safeName = sanitizeFileName(person.name);
+    const epName   = sanitizeFileName(e.title);
+    return `- [[${safeName}/${epName}|${e.title}]] · ${d}`;
+  }).join('\n');
+
+  const frontmatter = [
+    '---',
+    `name: "${name.replace(/"/g, "'")}"`,
+    tags ? `tags:\n${tags}` : 'tags: []',
+    'source: pulse',
+    `updated: ${new Date().toISOString().slice(0,10)}`,
+    '---',
+  ].join('\n');
+
+  const feedLines = [
+    person.feeds?.podcast ? `- 🎙 [Podcast RSS](${person.feeds.podcast})` : '',
+    ytUrl                 ? `- ▶ [YouTube](${ytUrl})`                     : '',
+    person.feeds?.blog    ? `- ✍️ [Blog](${person.feeds.blog})`           : '',
+    person.feeds?.twitter ? `- 𝕏 [Twitter/X RSS](${person.feeds.twitter})` : '',
+  ].filter(Boolean).join('\n');
+
+  const body = [
+    `# ${name}`,
+    '',
+    person.desc ? `*${person.desc}*\n` : '',
+    feedLines   ? `## Feeds\n\n${feedLines}\n` : '',
+    recent      ? `## Recent Episodes\n\n${recent}\n` : '',
+    '## Notes\n\n_(your notes about this person)_\n',
+  ].filter(s => s !== '').join('\n');
+
+  return frontmatter + '\n\n' + body;
+}
+
+// ── OBSIDIAN ACTIONS ──
+
+async function sendEpisodeToObsidian(entryArg) {
+  const entry  = entryArg || _currentModalEntry;
+  if (!entry) return;
+  const person = persons.find(p => p.id === entry.personId) || {};
+
+  if (!_vaultHandle) {
+    _showToast('No Obsidian vault selected — pick one in ⚙ Settings', 3500);
+    toggleSettings();
+    return;
+  }
+
+  const btn = document.getElementById('obsidianBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '📓 Saving…'; }
+
+  try {
+    const personFolder = sanitizeFileName(person.name || entry.personId);
+    const datePrefix   = entry.date ? new Date(entry.date).toISOString().slice(0,10) + ' — ' : '';
+    const epName       = sanitizeFileName(entry.title || 'Untitled');
+    const fileName     = datePrefix + epName + '.md';
+
+    const content = buildEpisodeNote(entry, person);
+    const ok = await writeObsidianNote(`${personFolder}/${fileName}`, content);
+
+    if (ok) {
+      _showToast(`📓 Saved to Obsidian: ${personFolder}/${fileName}`);
+      if (btn) { btn.disabled = false; btn.textContent = '📓 Obsidian ✓'; }
+    } else {
+      if (btn) { btn.disabled = false; btn.textContent = '📓 Obsidian'; }
+    }
+  } catch(e) {
+    _showToast('Obsidian write failed: ' + e.message, 4000);
+    if (btn) { btn.disabled = false; btn.textContent = '📓 Obsidian'; }
+  }
+}
+
+async function exportPersonToObsidian(personId) {
+  const person = persons.find(p => p.id === personId);
+  if (!person) return;
+
+  if (!_vaultHandle) {
+    _showToast('No Obsidian vault selected — pick one in ⚙ Settings', 3500);
+    toggleSettings();
+    return;
+  }
+
+  const personFolder = sanitizeFileName(person.name);
+  let written = 0;
+  let errors  = 0;
+
+  // 1. Person profile note → Pulse/_People/Joe Rogan.md
+  try {
+    await writeObsidianNote(`_People/${personFolder}.md`, buildPersonNote(person));
+    written++;
+  } catch(_) { errors++; }
+
+  // 2. All episodes that have notes or listened status → Pulse/Joe Rogan/DATE — Title.md
+  const episodesWithContent = (person.entries || []).filter(e =>
+    entryNotes[e.id] || listenedIds.has(e.id));
+
+  for (const entry of episodesWithContent) {
+    try {
+      const datePrefix = entry.date ? new Date(entry.date).toISOString().slice(0,10) + ' — ' : '';
+      const epName     = sanitizeFileName(entry.title || 'Untitled');
+      const fileName   = datePrefix + epName + '.md';
+      await writeObsidianNote(`${personFolder}/${fileName}`, buildEpisodeNote(entry, person));
+      written++;
+    } catch(_) { errors++; }
+  }
+
+  const msg = errors
+    ? `📓 Exported ${written} notes (${errors} failed) for ${person.name}`
+    : `📓 Exported ${written} note${written !== 1 ? 's' : ''} for ${person.name}`;
+  _showToast(msg, 3500);
+}
+
 // ── SETTINGS ──
 function toggleSettings() {
   const panel = document.getElementById('settingsPanel');
@@ -3114,18 +3438,23 @@ function toggleSettings() {
     btn.classList.remove('active');
   } else {
     // Populate fields from current config
-    document.getElementById('cfg-anthropic-key').value  = pwConfig.anthropicKey  || '';
-    document.getElementById('cfg-notebooklm-url').value = pwConfig.notebookLMUrl || '';
-    document.getElementById('cfg-ai-prompt').value      = pwConfig.aiPromptExtra  || '';
+    document.getElementById('cfg-anthropic-key').value      = pwConfig.anthropicKey      || '';
+    document.getElementById('cfg-notebooklm-url').value     = pwConfig.notebookLMUrl     || '';
+    document.getElementById('cfg-ai-prompt').value          = pwConfig.aiPromptExtra      || '';
+    document.getElementById('cfg-obsidian-subfolder').value = pwConfig.obsidianSubfolder  || 'Pulse';
+    document.getElementById('cfg-obsidian-autosave').checked = !!pwConfig.obsidianAutoSave;
+    _refreshVaultNameTag();
     panel.classList.add('open');
     btn.classList.add('active');
   }
 }
 
 function saveSettings() {
-  pwConfig.anthropicKey  = document.getElementById('cfg-anthropic-key').value.trim();
-  pwConfig.notebookLMUrl = document.getElementById('cfg-notebooklm-url').value.trim();
-  pwConfig.aiPromptExtra = document.getElementById('cfg-ai-prompt').value.trim();
+  pwConfig.anthropicKey      = document.getElementById('cfg-anthropic-key').value.trim();
+  pwConfig.notebookLMUrl     = document.getElementById('cfg-notebooklm-url').value.trim();
+  pwConfig.aiPromptExtra     = document.getElementById('cfg-ai-prompt').value.trim();
+  pwConfig.obsidianSubfolder = document.getElementById('cfg-obsidian-subfolder').value.trim() || 'Pulse';
+  pwConfig.obsidianAutoSave  = document.getElementById('cfg-obsidian-autosave').checked;
   saveConfig();
   const panel = document.getElementById('settingsPanel');
   const btn   = document.getElementById('settingsBtn');
@@ -3350,6 +3679,11 @@ async function generateAINotes() {
     document.querySelectorAll(`[data-eid="${CSS.escape(entry.id)}"]`)
       .forEach(el => el.dataset.hasNotes = '1');
 
+    // Auto-save to Obsidian if configured
+    if (pwConfig.obsidianAutoSave && _vaultHandle) {
+      sendEpisodeToObsidian(entry).catch(() => {});
+    }
+
   } catch(err) {
     if (aiArea) {
       aiArea.innerHTML = `<div class="ai-notes-label" style="color:#e84a4a">Error: ${escHtml(err.message)}</div>`;
@@ -3363,6 +3697,7 @@ async function generateAINotes() {
 // ── INIT ──
 loadState();
 loadConfig();
+_restoreVaultHandle();  // async — restores Obsidian vault handle if permission still granted
 renderAllCards();
 renderTagFilterRow();
 updateStatus();
