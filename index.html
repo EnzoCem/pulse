@@ -3601,53 +3601,73 @@ function _looksLikeRssUrl(url) {
   } catch(_) { return false; }
 }
 
-// Fetch books for a person via the free Google Books API (no key required).
-// query defaults to the person's name if not overridden in feeds.books.
+// Fetch books via Open Library (free, no key, librarian-curated author attribution).
+// Two-step: (1) find the author entity by name, (2) get their actual works by key.
+// This avoids the Google Books problem of matching foreword writers / contributors.
 async function fetchBooks(query, personId) {
-  // Fetch more than we need — we'll filter down to actual authored books client-side.
-  const url = `https://www.googleapis.com/books/v1/volumes?q=inauthor:${encodeURIComponent('"' + query + '"')}&maxResults=40&orderBy=relevance&printType=books&langRestrict=en`;
   try {
-    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!resp.ok) return [];
-    const data = await resp.json();
-    if (!data.items) return [];
+    // Step 1: find Open Library author entities matching the query name
+    const authorResp = await fetch(
+      `https://openlibrary.org/search/authors.json?q=${encodeURIComponent(query)}`,
+      { signal: AbortSignal.timeout(8000) }
+    );
+    if (!authorResp.ok) return [];
+    const authorData = await authorResp.json();
 
-    // The inauthor: query matches foreword writers, contributors, etc. too.
-    // Filter to only books where the query name appears in the volumeInfo.authors list
-    // (the actual author field, not editorial mentions). Match on significant name words
-    // so "Tim Ferriss" matches "Timothy Ferriss" etc.
+    // Keep author entries whose name contains at least one significant query word
     const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-    const isActualAuthor = (volumeInfo) => {
-      const authors = (volumeInfo?.authors || []).map(a => a.toLowerCase());
-      if (!authors.length) return false;
-      return authors.some(a => queryWords.some(word => a.includes(word)));
-    };
+    const matchingAuthors = (authorData.docs || [])
+      .filter(a => queryWords.some(w => (a.name || '').toLowerCase().includes(w)))
+      .slice(0, 3);  // cap at 3 to avoid runaway fetches for common names
 
-    // Keep only English editions by actual author, then deduplicate by title
+    if (!matchingAuthors.length) return [];
+
+    // Step 2: for each matched author key, get their works from the search index
+    const allDocs = [];
+    await Promise.all(matchingAuthors.map(async author => {
+      const r = await fetch(
+        `https://openlibrary.org/search.json?author=${encodeURIComponent(author.key)}&fields=key,title,author_name,first_publish_year,cover_i&limit=20`,
+        { signal: AbortSignal.timeout(8000) }
+      ).catch(() => null);
+      if (!r?.ok) return;
+      const d = await r.json().catch(() => null);
+      if (d?.docs) allDocs.push(...d.docs);
+    }));
+
+    // Filter out obvious third-party summaries/guides, then deduplicate by title
+    const JUNK_RX = /\b(summary|résumé|resume|in \d+ minutes?|workbook|study guide)\b/i;
     const seen = new Set();
-    const unique = data.items.filter(item => {
-      if (item.volumeInfo?.language !== 'en') return false;
-      if (!isActualAuthor(item.volumeInfo)) return false;
-      const key = (item.volumeInfo?.title || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40);
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    return unique.map(item => {
-      const v    = item.volumeInfo || {};
-      const date = v.publishedDate ? new Date(v.publishedDate).toISOString() : new Date(0).toISOString();
-      const link = v.canonicalVolumeLink || v.infoLink || `https://books.google.com/books?id=${item.id}`;
-      return {
-        id:       `${personId}-books-${item.id}`.slice(0, 80),
-        personId,
-        platform: 'books',
-        title:    v.title || '(Untitled)',
-        link,
-        desc:     (v.description || '').replace(/<[^>]*>/g, '').slice(0, 300),
-        date,
-        thumbnail: v.imageLinks?.thumbnail?.replace('http:', 'https:') || '',
-      };
-    });
+    return allDocs
+      .filter(doc => {
+        const title = doc.title || '';
+        if (JUNK_RX.test(title)) return false;
+        const key = title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) => (b.first_publish_year || 0) - (a.first_publish_year || 0))
+      .map(doc => {
+        const year = doc.first_publish_year || 0;
+        const date = year ? new Date(year, 0, 1).toISOString() : new Date(0).toISOString();
+        const olKey = (doc.key || '').replace('/works/', '');
+        const link = olKey
+          ? `https://openlibrary.org/works/${olKey}`
+          : `https://openlibrary.org/search?author=${encodeURIComponent(query)}`;
+        const thumbnail = doc.cover_i
+          ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg`
+          : '';
+        return {
+          id:        `${personId}-books-${olKey || doc.title}`.replace(/\s/g, '').slice(0, 80),
+          personId,
+          platform:  'books',
+          title:     doc.title || '(Untitled)',
+          link,
+          desc:      (doc.author_name || []).join(', '),
+          date,
+          thumbnail,
+        };
+      });
   } catch(e) {
     console.warn('[Pulse] Books fetch failed:', e.message);
     return [];
