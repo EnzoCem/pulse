@@ -1306,7 +1306,9 @@ function renderTagFilterRow() {
     const on = activeTag === tag;
     return `<button class="tag-chip${on?' active':''}"
       style="background:${on ? c : c+'22'};color:${on ? '#111' : c}"
-      onclick="setTagFilter('${escHtml(tag)}')">${escHtml(tag)}</button>`;
+      onclick="setTagFilter('${escHtml(tag)}')"
+      title="${on ? 'Click to clear filter' : 'Filter by ' + tag}"
+      >${escHtml(tag)}${on ? ' ×' : ''}</button>`;
   }).join('');
 }
 function setTagFilter(tag) {
