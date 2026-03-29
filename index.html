@@ -22,6 +22,7 @@
     --twitter:   #4ab8e8;
     --blog:      #a0e84a;
     --substack:  #e84aaa;
+    --books:     #c084fc;
     --radius:    6px;
   }
 
@@ -1059,6 +1060,13 @@
           <input type="text" id="f-blog" placeholder="https://example.substack.com/feed">
         </div>
       </div>
+      <div class="feed-row">
+        <div class="platform-badge" style="background:#1a1030; font-size:16px;">📚</div>
+        <div class="form-row" style="flex:1">
+          <label>Books search query <span style="color:var(--muted);font-weight:400">(optional — defaults to person name)</span></label>
+          <input type="text" id="f-books" placeholder="e.g. Tim Ferriss  or  leave blank for auto">
+        </div>
+      </div>
     </div>
 
     <div class="form-actions">
@@ -1138,6 +1146,9 @@
         </button>
         <button class="filter-chip" data-filter="blog" onclick="setFilter('blog')">
           <span class="chip-dot" style="background:var(--blog)"></span>Blog
+        </button>
+        <button class="filter-chip" data-filter="books" onclick="setFilter('books')">
+          <span class="chip-dot" style="background:var(--books)"></span>Books
         </button>
       </div>
       <div style="position:relative;display:flex;align-items:center">
@@ -1237,6 +1248,7 @@ const PLATFORMS = {
   youtube: { label: 'YouTube', color: 'var(--youtube)', emoji: '▶' },
   twitter: { label: 'X',       color: 'var(--twitter)', emoji: '𝕏' },
   blog:    { label: 'Blog',    color: 'var(--blog)',    emoji: '✍' },
+  books:   { label: 'Books',   color: 'var(--books)',   emoji: '📚' },
 };
 
 // If a person has a YouTube channel but no podcast RSS, their YouTube entries
@@ -1253,6 +1265,15 @@ function getPlatform(entry, person) {
 const CORS_PRIMARY   = 'https://corsproxy.io/?';
 const CORS_FALLBACK  = 'https://api.allorigins.win/raw?url=';
 const CORS_FALLBACK2 = 'https://api.codetabs.com/v1/proxy?quest=';
+
+// Free Nitter instances for X/Twitter RSS (tried in order; first working one wins)
+const NITTER_INSTANCES = [
+  'https://nitter.poast.org',
+  'https://nitter.privacydev.net',
+  'https://nitter.net',
+  'https://lightbrd.com',
+  'https://nitter.1d4.us',
+];
 
 // ── STATE ──
 let persons      = [];
@@ -1317,11 +1338,12 @@ function renderTagFilterRow() {
   row.innerHTML = '<span class="tag-filter-label">Topics:</span>' + allTags.map(tag => {
     const c  = tagColor(tag);
     const on = activeTag === tag;
-    return `<button class="tag-chip${on?' active':''}"
-      style="background:${on ? c : c+'22'};color:${on ? '#111' : c}"
-      onclick="setTagFilter('${escHtml(tag)}')"
-      title="${on ? 'Click to clear filter' : 'Filter by ' + tag}"
-      >${escHtml(tag)}${on ? ' ×' : ''}</button>`;
+    return `<span class="tag-chip${on?' active':''}"
+      style="background:${on ? c : c+'22'};color:${on ? '#111' : c};display:inline-flex;align-items:center;gap:4px">
+      <span onclick="setTagFilter('${escHtml(tag)}')" style="cursor:pointer" title="${on ? 'Clear filter' : 'Filter by '+tag}">${escHtml(tag)}</span>
+      <button class="tag-remove" type="button" title="Rename tag" style="font-size:10px;opacity:0.7" onclick="renameGlobalTag('${escHtml(tag)}')">✎</button>
+      <button class="tag-remove" type="button" title="Remove tag from all people" onclick="removeGlobalTag('${escHtml(tag)}')">×</button>
+    </span>`;
   }).join('');
 }
 function setTagFilter(tag) {
@@ -1329,6 +1351,27 @@ function setTagFilter(tag) {
   renderTagFilterRow();
   renderAllCards();
   if (currentView === 'timeline') renderTimeline();
+}
+function renameGlobalTag(oldTag) {
+  const newTag = prompt(`Rename "${oldTag}" to:`, oldTag);
+  if (!newTag || newTag.trim() === oldTag) return;
+  const n = newTag.trim().toLowerCase();
+  persons.forEach(p => {
+    if (p.tags) p.tags = p.tags.map(t => t === oldTag ? n : t);
+  });
+  if (activeTag === oldTag) activeTag = n;
+  saveState();
+  renderTagFilterRow();
+  renderAllCards();
+}
+function removeGlobalTag(tag) {
+  persons.forEach(p => {
+    if (p.tags) p.tags = p.tags.filter(t => t !== tag);
+  });
+  if (activeTag === tag) activeTag = null;
+  saveState();
+  renderTagFilterRow();
+  renderAllCards();
 }
 
 // ── INLINE TAG EDITOR (per card) ──
@@ -1378,6 +1421,15 @@ function refreshEditChips(personId) {
 function removeEditTag(personId, tag) {
   _editTagState[personId] = (_editTagState[personId] || []).filter(t => t !== tag);
   refreshEditChips(personId);
+}
+
+function removePersonTag(personId, tag) {
+  const person = persons.find(p => p.id === personId);
+  if (!person) return;
+  person.tags = (person.tags || []).filter(t => t !== tag);
+  saveState();
+  renderTagFilterRow();
+  renderPersonCard(person, false);
 }
 
 function handleTagEditorKeydown(e, personId) {
@@ -1829,13 +1881,14 @@ function renderPersonDetail() {
   const feedRows = [
     { key: 'podcast', label: isSourcePerson ? '📰 Main RSS Feed' : '🎙 Podcast', ph: isSourcePerson ? 'https://bigthink.com/feed/' : 'RSS feed URL' },
     { key: 'youtube', label: '▶ YouTube',      ph: '@handle, URL, or UC… ID' },
-    { key: 'twitter', label: '🐦 X / Twitter', ph: 'rss.app RSS URL — not x.com/username' },
+    { key: 'twitter', label: '🐦 X / Twitter', ph: '@username  or  x.com/username  or  rss.app URL' },
     { key: 'blog',    label: '✍ Blog',         ph: 'RSS or Atom feed URL' },
+    { key: 'books',   label: '📚 Books',        ph: 'Search query (blank = auto from name)' },
   ].map(f => {
     const val = person.feeds[f.key] || '';
     // Red ⚠ = last fetch actually failed; Amber ⚠ = URL doesn't look like RSS at all
     const fetchFailed = failedFeeds.includes(f.key);
-    const notRss      = val && f.key === 'twitter' && !_looksLikeRssUrl(val);
+    const notRss      = val && f.key === 'twitter' && !_looksLikeRssUrl(val) && !_extractTwitterHandle(val);
     const indicator   = fetchFailed
       ? `<span class="detail-feed-error" title="Last fetch failed — check the URL">⚠</span>`
       : notRss
@@ -2020,6 +2073,7 @@ async function savePersonDetail() {
   p.feeds.podcast = document.getElementById('df-podcast')?.value.trim() || '';
   p.feeds.blog    = document.getElementById('df-blog')?.value.trim()    || '';
   p.feeds.twitter = document.getElementById('df-twitter')?.value.trim() || '';
+  p.feeds.books   = document.getElementById('df-books')?.value.trim()   || '';
 
   // Resolve YouTube: accepts URL, @handle, username, or raw channel ID
   const ytRaw = document.getElementById('df-youtube')?.value.trim() || '';
@@ -2478,6 +2532,7 @@ async function addPerson() {
       youtube: ytId,
       twitter: document.getElementById('f-twitter').value.trim(),
       blog:    document.getElementById('f-blog').value.trim(),
+      books:   document.getElementById('f-books')?.value.trim() || '',
     },
     itunesId: matchedSug?.itunesId || null,
     entries: [], lastUpdated: null, loading: false,
@@ -2486,7 +2541,7 @@ async function addPerson() {
 
   persons.unshift(person);
   saveState();
-  ['f-name','f-desc','f-website','f-avatar','f-podcast','f-youtube','f-twitter','f-blog'].forEach(id => {
+  ['f-name','f-desc','f-website','f-avatar','f-podcast','f-youtube','f-twitter','f-blog','f-books'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('suggestArea').innerHTML = '';
@@ -2644,13 +2699,14 @@ function renderPersonCard(person, prepend = false, delay = 0) {
         <div class="person-tags">
           ${(person.tags||[]).map(t => {
             const c = tagColor(t);
-            return `<span class="tag-chip" style="background:${c}22;color:${c}" onclick="event.stopPropagation();setTagFilter('${escHtml(t)}')">${escHtml(t)}</span>`;
+            return `<span class="tag-chip" style="background:${c}22;color:${c};cursor:pointer" title="Click to edit tags" onclick="event.stopPropagation();openTagEditor('${person.id}')">${escHtml(t)
+              }<button class="tag-remove" type="button" title="Remove tag" onclick="event.stopPropagation();removePersonTag('${person.id}','${escHtml(t)}')">×</button></span>`;
           }).join('')}
           ${(person.tags||[]).length === 0
-            ? `<button class="tag-edit-btn" style="opacity:0.45;font-size:10px;letter-spacing:0.04em"
+            ? `<button class="tag-edit-btn" style="opacity:0.6;font-size:10px;letter-spacing:0.04em"
                 onclick="event.stopPropagation();openTagEditor('${person.id}')"
                 data-tip="Add topics">+ topics</button>`
-            : `<button class="tag-edit-btn"
+            : `<button class="tag-edit-btn" style="opacity:0.7"
                 onclick="event.stopPropagation();openTagEditor('${person.id}')"
                 data-tip="Edit topics">✎</button>`}
         </div>
@@ -2738,7 +2794,7 @@ function rebuildAllEntries() {
 
 // ── FETCH ──
 // Platform preference when deduplicating (higher index = preferred)
-const PLATFORM_PREF = { twitter: 0, blog: 1, podcast: 2, youtube: 3 };
+const PLATFORM_PREF = { twitter: 0, blog: 1, podcast: 2, youtube: 3, books: 1 };
 
 function titleKey(title) {
   return title.toLowerCase()
@@ -2827,24 +2883,39 @@ async function fetchPerson(person) {
     }
   }
 
+  // Only fetch YouTube if the stored value is a valid UC… channel ID
+  const ytId = person.feeds.youtube;
+  const ytValid = ytId && /^UC[a-zA-Z0-9_-]{21,22}$/.test(ytId);
+
+  const tasks = [];
+
   if (person.type === 'source') {
-    // Sources: fetch YouTube videos + RSS articles independently (both shown, deduplicated)
-    // The podcast field is used as "Main RSS Feed" for sources, stored as 'blog' platform
-    if (person.feeds.youtube)
-      await pull(`https://www.youtube.com/feeds/videos.xml?channel_id=${person.feeds.youtube}`, 'youtube');
-    if (person.feeds.podcast) await pull(person.feeds.podcast, 'blog');
-    if (person.feeds.blog)    await pull(person.feeds.blog,    'blog');
+    if (ytValid)                tasks.push(pull(`https://www.youtube.com/feeds/videos.xml?channel_id=${ytId}`, 'youtube'));
+    if (person.feeds.podcast)   tasks.push(pull(person.feeds.podcast, 'blog'));
+    if (person.feeds.blog)      tasks.push(pull(person.feeds.blog,    'blog'));
   } else {
-    // Persons: only fetch YouTube channel RSS when there is no podcast RSS.
-    // YouTube channel ID is used to help find video links, not to source content.
-    if (person.feeds.youtube && !person.feeds.podcast)
-      await pull(`https://www.youtube.com/feeds/videos.xml?channel_id=${person.feeds.youtube}`, 'youtube');
-    if (person.feeds.podcast) await pull(person.feeds.podcast, 'podcast');
-    if (person.feeds.blog)    await pull(person.feeds.blog,    'blog');
+    if (ytValid && !person.feeds.podcast) tasks.push(pull(`https://www.youtube.com/feeds/videos.xml?channel_id=${ytId}`, 'youtube'));
+    if (person.feeds.podcast)   tasks.push(pull(person.feeds.podcast, 'podcast'));
+    if (person.feeds.blog)      tasks.push(pull(person.feeds.blog,    'blog'));
   }
-  // Only pull twitter if the URL actually looks like an RSS feed, not a social profile page
-  if (person.feeds.twitter && _looksLikeRssUrl(person.feeds.twitter))
-    await pull(person.feeds.twitter, 'twitter');
+
+  // Books: query Google Books API (uses feeds.books override or falls back to person name)
+  const booksQuery = (person.feeds.books || '').trim() || person.name;
+  tasks.push(fetchBooks(booksQuery, person.id).then(e => newEntries.push(...e)));
+
+  // Twitter: full RSS URL or bare handle via Nitter
+  if (person.feeds.twitter && _looksLikeRssUrl(person.feeds.twitter)) {
+    const handle = _extractTwitterHandle(person.feeds.twitter);
+    if (handle) {
+      tasks.push(fetchTwitterHandle(handle, 'twitter', person.id).then(e => newEntries.push(...e)));
+    } else {
+      tasks.push(pull(person.feeds.twitter, 'twitter'));
+    }
+  }
+
+  // Run all feeds in parallel, but enforce a 30s hard cap on the whole fetch
+  const TIMEOUT = new Promise(resolve => setTimeout(resolve, 30000));
+  await Promise.race([Promise.allSettled(tasks), TIMEOUT]);
 
   person.entries     = deduplicateEntries(newEntries).slice(0, 20);
   person.lastUpdated = new Date().toISOString();
@@ -2952,9 +3023,15 @@ async function fetchRSS(url, platform, personId, _redirected = false) {
   let xml = null;
   let resolvedUrl = url;
 
+  const t = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const timedFetch = (u, ms) => Promise.race([
+    fetch(u, { signal: AbortSignal.timeout(ms) }),
+    t(ms).then(() => ({ ok: false }))
+  ]);
+
   // Step 1: Direct fetch — YouTube RSS and many podcast feeds support CORS natively
   try {
-    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const resp = await timedFetch(url, 5000);
     if (resp.ok) {
       const text = await resp.text();
       // Make sure it looks like XML, not an HTML error page
@@ -2967,7 +3044,7 @@ async function fetchRSS(url, platform, personId, _redirected = false) {
   // Step 2: corsproxy.io (returns raw content)
   if (!xml) {
     try {
-      const resp = await fetch(CORS_PRIMARY + encodeURIComponent(url), { signal: AbortSignal.timeout(10000) });
+      const resp = await timedFetch(CORS_PRIMARY + encodeURIComponent(url), 7000);
       if (resp.ok) xml = await resp.text();
     } catch(e) {
       console.warn('Primary proxy failed, trying fallback:', url, e.message);
@@ -2977,7 +3054,7 @@ async function fetchRSS(url, platform, personId, _redirected = false) {
   // Step 3: allorigins.win/raw
   if (!xml) {
     try {
-      const resp = await fetch(CORS_FALLBACK + encodeURIComponent(url), { signal: AbortSignal.timeout(10000) });
+      const resp = await timedFetch(CORS_FALLBACK + encodeURIComponent(url), 7000);
       if (resp.ok) xml = await resp.text();
     } catch(e) {
       console.warn('Fallback proxy also failed:', url, e.message);
@@ -2987,7 +3064,7 @@ async function fetchRSS(url, platform, personId, _redirected = false) {
   // Step 4: codetabs.com — works well for YouTube feeds
   if (!xml) {
     try {
-      const resp = await fetch(CORS_FALLBACK2 + encodeURIComponent(url), { signal: AbortSignal.timeout(10000) });
+      const resp = await timedFetch(CORS_FALLBACK2 + encodeURIComponent(url), 7000);
       if (resp.ok) xml = await resp.text();
     } catch(e) {
       console.warn('Codetabs proxy also failed:', url, e.message);
@@ -3520,18 +3597,21 @@ const getText    = (el, tag) => { const n = el.querySelector(tag); return n ? (n
 const cleanText  = str => str.replace(/<[^>]*>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/\s+/g,' ').trim();
 const escHtml    = str => String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const getInitials = name => name.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
-const hexAlpha   = p => ({ podcast:'#2a1510', youtube:'#2a1010', twitter:'#101a2a', blog:'#141f10' }[p]||'#1a1a22');
+const hexAlpha   = p => ({ podcast:'#2a1510', youtube:'#2a1010', twitter:'#101a2a', blog:'#141f10', books:'#1a1030' }[p]||'#1a1a22');
 
 // Returns false if the URL is obviously a social-media profile page rather than an RSS/Atom feed.
 // Used to skip bad twitter field values silently rather than counting them as fetch failures.
 function _looksLikeRssUrl(url) {
   if (!url) return false;
+  // Accept bare @username or plain username as a Twitter handle (resolved via Nitter)
+  if (/^@?[A-Za-z0-9_]{1,50}$/.test(url.trim())) return true;
   try {
     const u    = new URL(url);
     const host = u.hostname.replace(/^www\./, '');
-    // Plain x.com / twitter.com profile — only allow if path has rss/feed/xml indicator
+    // Plain x.com / twitter.com profile — treat as handle (resolved via Nitter)
     if (/^(x|twitter)\.com$/.test(host)) {
-      return /\/(rss|feed|atom)|\.xml|\.rss/i.test(u.pathname + u.search);
+      const handle = u.pathname.replace(/^\//, '').split('/')[0];
+      return !!handle && !/^(home|explore|notifications|messages|settings)$/i.test(handle);
     }
     // Plain instagram / linkedin profile pages
     if (/^(instagram|linkedin|facebook|tiktok)\.com$/.test(host)) {
@@ -3539,6 +3619,71 @@ function _looksLikeRssUrl(url) {
     }
     return true; // Everything else is assumed to be an RSS URL
   } catch(_) { return false; }
+}
+
+// Fetch books for a person via the free Google Books API (no key required).
+// query defaults to the person's name if not overridden in feeds.books.
+async function fetchBooks(query, personId) {
+  const url = `https://www.googleapis.com/books/v1/volumes?q=inauthor:${encodeURIComponent('"' + query + '"')}&maxResults=20&orderBy=newest&printType=books&langRestrict=en`;
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    if (!data.items) return [];
+    return data.items.map(item => {
+      const v    = item.volumeInfo || {};
+      const date = v.publishedDate ? new Date(v.publishedDate).toISOString() : new Date(0).toISOString();
+      const link = v.canonicalVolumeLink || v.infoLink || `https://books.google.com/books?id=${item.id}`;
+      return {
+        id:       `${personId}-books-${item.id}`.slice(0, 80),
+        personId,
+        platform: 'books',
+        title:    v.title || '(Untitled)',
+        link,
+        desc:     (v.description || '').replace(/<[^>]*>/g, '').slice(0, 300),
+        date,
+        thumbnail: v.imageLinks?.thumbnail?.replace('http:', 'https:') || '',
+      };
+    });
+  } catch(e) {
+    console.warn('[Pulse] Books fetch failed:', e.message);
+    return [];
+  }
+}
+
+// Try each Nitter instance in sequence; resolve with the first RSS XML that comes back.
+// Returns the parsed entries array, or [] if all instances fail.
+async function fetchTwitterHandle(handle, platform, personId) {
+  for (const base of NITTER_INSTANCES) {
+    const rssUrl = `${base}/${handle}/rss`;
+    try {
+      const { entries, error } = await fetchRSS(rssUrl, platform, personId);
+      if (!error && entries.length > 0) return entries;
+    } catch(_) {}
+  }
+  console.warn(`[Pulse] All Nitter instances failed for @${handle}`);
+  return [];
+}
+
+// Extract a bare Twitter username from @username, x.com/user, or twitter.com/user.
+// Returns null if the value looks like a full RSS URL (e.g. rss.app, Nitter RSS path).
+function _extractTwitterHandle(val) {
+  if (!val) return null;
+  const s = val.trim();
+  // Already a full RSS URL — don't treat as handle
+  try {
+    const u = new URL(s);
+    const host = u.hostname.replace(/^www\./, '');
+    if (/^(x|twitter)\.com$/.test(host)) {
+      const handle = u.pathname.replace(/^\//, '').split('/')[0];
+      return handle || null;
+    }
+    // Any other full URL (rss.app, nitter instance, etc.) → not a handle
+    return null;
+  } catch(_) {}
+  // @username or plain username
+  const m = s.match(/^@?([A-Za-z0-9_]{1,50})$/);
+  return m ? m[1] : null;
 }
 
 function timeAgo(dateStr) {
