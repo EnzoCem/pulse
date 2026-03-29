@@ -1330,10 +1330,7 @@ function renderFormTagChips() {
 // ── TAG FILTER BAR ──
 function renderTagFilterRow() {
   const row = document.getElementById('tagFilterRow');
-  const allTags = [...new Set([
-    ...persons.flatMap(p => p.tags || []),
-    ...Object.values(entryTags).flat()
-  ])].sort();
+  const allTags = [...new Set(persons.flatMap(p => p.tags || []))].sort();
   if (allTags.length === 0) { row.innerHTML = ''; return; }
   row.innerHTML = '<span class="tag-filter-label">Topics:</span>' + allTags.map(tag => {
     const c  = tagColor(tag);
@@ -1367,6 +1364,10 @@ function renameGlobalTag(oldTag) {
 function removeGlobalTag(tag) {
   persons.forEach(p => {
     if (p.tags) p.tags = p.tags.filter(t => t !== tag);
+  });
+  Object.keys(entryTags).forEach(id => {
+    entryTags[id] = entryTags[id].filter(t => t !== tag);
+    if (entryTags[id].length === 0) delete entryTags[id];
   });
   if (activeTag === tag) activeTag = null;
   saveState();
@@ -2582,9 +2583,7 @@ function renderAllCards() {
   grid.innerHTML = '';
 
   let visible = activeTag
-    ? persons.filter(p =>
-        (p.tags||[]).includes(activeTag) ||
-        (p.entries||[]).some(e => (entryTags[e.id]||[]).includes(activeTag)))
+    ? persons.filter(p => (p.tags||[]).includes(activeTag))
     : persons;
 
   // Apply search: only show persons with matching entries, filtered to matches only
@@ -3630,7 +3629,16 @@ async function fetchBooks(query, personId) {
     if (!resp.ok) return [];
     const data = await resp.json();
     if (!data.items) return [];
-    return data.items.map(item => {
+    // Keep only English editions, then deduplicate by title (handles multiple English formats)
+    const seen = new Set();
+    const unique = data.items.filter(item => {
+      if (item.volumeInfo?.language !== 'en') return false;
+      const key = (item.volumeInfo?.title || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return unique.map(item => {
       const v    = item.volumeInfo || {};
       const date = v.publishedDate ? new Date(v.publishedDate).toISOString() : new Date(0).toISOString();
       const link = v.canonicalVolumeLink || v.infoLink || `https://books.google.com/books?id=${item.id}`;

@@ -10,8 +10,8 @@ Define a list of people you follow (podcasters, researchers, thinkers) or public
 
 - **People view** — one card per person showing their 4 most recent items with NEW badges on unseen content
 - **Timeline view** — all activity from all people, sorted chronologically, grouped by date
-- **Filter by platform** — Podcast / YouTube / X / Blog chips in both views
-- **Filter by topic** — tag-based filtering across all people
+- **Filter by platform** — Podcast / YouTube / X / Blog / Books chips in both views
+- **Filter by topic** — assign tags to people and filter by them via the TOPICS bar
 - **Entry detail modal** — click any item to read its description, add notes, and open it
 - **AI Notes** — generate structured research notes from YouTube transcripts or article text via Claude API
 - **NotebookLM** — one-click to copy a video or article URL and open your notebook
@@ -37,7 +37,7 @@ All data is persisted in `localStorage`. Nothing is sent to any server except op
 |---|---|---|
 | Podcast | Full RSS URL **or** Apple Podcasts URL | Auto-detected by Search. Pasting `podcasts.apple.com/…/id123` resolves to the real RSS feed automatically |
 | YouTube | Channel ID, `@handle`, or full URL | e.g. `@PowerfulJRE` — auto-resolved to `UC…` ID on save |
-| X / Twitter | rss.app RSS URL | Create a feed at [rss.app](https://rss.app) (~$5/mo), paste the generated URL |
+| X / Twitter | `@username`, `x.com/username`, or rss.app URL | Bare handles fetched for free via public Nitter instances; rss.app also accepted |
 | Blog / Main RSS | RSS URL **or** any website/section URL | e.g. `https://aeon.co/essays` — app auto-discovers the RSS feed via `<link rel="alternate">`, common path probing, and Feedly's feed database |
 
 ### YouTube tip: no channel ID needed
@@ -56,6 +56,42 @@ If you enter a website or section URL instead of a direct RSS URL (e.g. `https:/
 3. Queries Feedly's public feed-search API as a last resort
 
 The resolved RSS URL is saved back automatically so future refreshes go directly to the feed.
+
+---
+
+## X / Twitter
+
+The X / Twitter field accepts:
+- `@username` or plain `username` — fetched for free via public Nitter instances (tried in sequence; first working one wins)
+- `x.com/username` or `twitter.com/username` URL
+- A full rss.app RSS URL (paid, most reliable)
+
+If all Nitter instances fail, Twitter content is silently skipped for that refresh.
+
+---
+
+## Books
+
+Each person automatically has their books looked up via the **Google Books API** (free, no key required) using `inauthor:"Name"`. Results are filtered to English editions only and deduplicated so each title appears once.
+
+You can override the search query in the person's **Books** field (Edit profile) — useful for pen names or to narrow results (e.g. `Tim Ferriss self-help`). Leave it blank to use the person's name.
+
+Books appear in cards and timeline with a 📚 purple indicator and are filterable via the **Books** chip in the toolbar.
+
+---
+
+## Topics / Tags
+
+Tags are assigned to **people** (not individual entries). Use them to group and filter:
+
+1. Open a person card, click **+ topics** (or **✎** if tags exist)
+2. Type a tag name, press **Enter**, click **Save**
+3. The **TOPICS** bar appears above the grid — click any tag to filter to people with that tag
+
+**Managing tags from the TOPICS bar:**
+- Click a tag label to toggle the filter on/off
+- Click **✎** to rename the tag across all people
+- Click **×** to remove the tag from all people
 
 ---
 
@@ -150,6 +186,8 @@ RSS feeds are fetched through a chain of three public CORS proxies, tried in ord
 | YouTube Data (RSS) | None | Channel feed via `youtube.com/feeds/videos.xml?channel_id=…` |
 | YouTube (captions) | None | Transcript fetch for AI Notes |
 | Feedly feed search | None | RSS feed discovery for website URLs |
+| Google Books API | None | Books lookup by author name |
+| Nitter (public instances) | None | X/Twitter RSS for bare @username handles |
 | Anthropic Messages API | API key (yours) | AI Notes generation |
 | File System Access API | Browser prompt | Obsidian vault write |
 
@@ -167,8 +205,9 @@ RSS feeds are fetched through a chain of three public CORS proxies, tried in ord
   feeds: {
     podcast:   string,        // full RSS URL (or "Main RSS Feed" for sources)
     youtube:   string,        // UC… channel ID
-    twitter:   string,        // rss.app RSS URL
+    twitter:   string,        // @username, x.com/user, or rss.app RSS URL
     blog:      string,        // full RSS URL
+    books:     string,        // optional Google Books search query override (blank = person name)
   },
   tags:        string[],      // topics for filtering
   itunesId:    number|null,   // iTunes collection ID (enables full episode history)
@@ -181,7 +220,7 @@ RSS feeds are fetched through a chain of three public CORS proxies, tried in ord
 {
   id:            string,      // personId + platform + link (max 80 chars)
   personId:      string,
-  platform:      'podcast'|'youtube'|'twitter'|'blog',
+  platform:      'podcast'|'youtube'|'twitter'|'blog'|'books',
   title:         string,
   link:          string,      // URL to open
   desc:          string,      // snippet, max 300 chars, HTML-stripped
@@ -208,7 +247,7 @@ RSS feeds are fetched through a chain of three public CORS proxies, tried in ord
 
 ### Done
 - [x] People view + Timeline view
-- [x] Platform and topic filtering
+- [x] Platform and topic filtering (Podcast / YouTube / X / Blog / Books)
 - [x] Edit person (feeds, name, avatar, tags, website) via detail panel
 - [x] Auto-search from person name (iTunes + YouTube + blog detection)
 - [x] Apple Podcasts URL → RSS feed auto-resolution (iTunes lookup by ID)
@@ -218,7 +257,7 @@ RSS feeds are fetched through a chain of three public CORS proxies, tried in ord
 - [x] Podcast ad stripping from descriptions
 - [x] Open Sound / Open Video buttons for podcasts
 - [x] YouTube video auto-find by episode title (no channel ID needed)
-- [x] Three-proxy CORS fallback chain
+- [x] Three-proxy CORS fallback chain with parallel fetching and 30s hard cap
 - [x] Full podcast episode history via iTunes Lookup API
 - [x] Publication / Source type (articles with per-author names)
 - [x] Per-entry notes (manual text saved in localStorage)
@@ -227,9 +266,12 @@ RSS feeds are fetched through a chain of three public CORS proxies, tried in ord
 - [x] NotebookLM one-click (video URL or article URL copied to clipboard)
 - [x] Obsidian vault integration (File System Access API, no plugin needed)
 - [x] Podcasting 2.0 transcript links (`<podcast:transcript>`)
+- [x] Books tab — Google Books API, English-only, deduplicated by title
+- [x] X/Twitter via free Nitter instances (accepts @username, no paid subscription needed)
+- [x] Person-level topic tags with TOPICS filter bar (rename/remove globally)
+- [x] Website field on person/source profiles
 
 ### Planned
-- [ ] Books — new content type with Open Library / Google Books lookup, reading status, AI summary
 - [ ] Auto-refresh every N minutes with visual countdown
 - [ ] Show more than 4 entries per card (expand / paginate)
 - [ ] Keyword search across all entry titles and descriptions
