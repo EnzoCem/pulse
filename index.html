@@ -2173,6 +2173,77 @@ async function _findBlog(name, podcastUrl = '') {
   return results.find(r => r !== null) ?? null;
 }
 
+// RSS discovery specifically for publications/sources.
+// Unlike _findBlog, this:
+//   1. Does not reject feeds that contain iTunes namespace (WordPress sites often include it)
+//   2. Tries RSS autodiscovery on the homepage (<link rel="alternate" type="application/rss+xml">)
+//   3. Tries a broader set of common RSS paths
+async function _findSourceRSS(name) {
+  const s1 = name.toLowerCase().replace(/\s+/g, '-');   // "big-think"
+  const s2 = name.toLowerCase().replace(/\s+/g, '');    // "bigthink"
+
+  // Candidate base domains to try
+  const domains = [
+    `https://${s2}.com`,
+    `https://www.${s2}.com`,
+    `https://${s1}.com`,
+    `https://www.${s1}.com`,
+  ];
+
+  // For each domain, try autodiscovery then fallback paths
+  const rssPaths = ['/feed', '/feed/', '/rss', '/rss.xml', '/rss/', '/feed.xml',
+                    '/atom.xml', '/index.xml', '/?feed=rss2', '/feeds/posts/default'];
+
+  async function proxyFetch(url, timeout = 6000) {
+    for (const proxy of ['', CORS_PRIMARY, CORS_FALLBACK]) {
+      try {
+        const r = await fetch((proxy ? proxy + encodeURIComponent(url) : url),
+          { signal: AbortSignal.timeout(timeout) });
+        if (r.ok) return await r.text();
+      } catch(_) {}
+    }
+    return null;
+  }
+
+  function isValidFeed(text) {
+    if (!text) return false;
+    const t = text.trimStart();
+    return t.startsWith('<?xml') || t.startsWith('<rss') || t.startsWith('<feed');
+  }
+
+  for (const domain of domains) {
+    // Step A: fetch homepage, look for RSS autodiscovery link
+    const homepage = await proxyFetch(domain, 5000);
+    if (homepage) {
+      // Parse <link rel="alternate" type="application/rss+xml" href="...">
+      const m = homepage.match(/<link[^>]+type=["']application\/(?:rss|atom)\+xml["'][^>]+href=["']([^"']+)["']/i)
+             || homepage.match(/<link[^>]+href=["']([^"']+)["'][^>]+type=["']application\/(?:rss|atom)\+xml["']/i);
+      if (m) {
+        let rssUrl = m[1];
+        // Resolve relative URLs
+        if (rssUrl.startsWith('/')) rssUrl = domain + rssUrl;
+        const feed = await proxyFetch(rssUrl, 5000);
+        if (isValidFeed(feed)) return rssUrl;
+      }
+
+      // Step B: try common RSS paths on this domain
+      for (const path of rssPaths) {
+        const url  = domain + path;
+        const feed = await proxyFetch(url, 4000);
+        if (isValidFeed(feed)) return url;
+      }
+    } else {
+      // Domain unreachable via direct fetch — try paths through proxy anyway
+      for (const path of rssPaths) {
+        const url  = domain + path;
+        const feed = await proxyFetch(url, 4000);
+        if (isValidFeed(feed)) return url;
+      }
+    }
+  }
+  return null;
+}
+
 // How well does a suggestion name match the query? (0 = no match, 3 = exact)
 function _nameScore(query, suggName) {
   const q = query.toLowerCase().trim();
@@ -2194,21 +2265,22 @@ async function searchPersonByName() {
   btn.disabled = true; btn.textContent = 'Searching…';
   _suggestions = [];
 
-  // ── SOURCE mode: skip iTunes, just find YouTube + blog/RSS ──
+  // ── SOURCE mode: skip iTunes, use RSS autodiscovery + YouTube search ──
   if (_addType === 'source') {
-    area.innerHTML = '<div class="suggest-status">Searching YouTube and RSS feeds…</div>';
-    const [ytId, blogUrl] = await Promise.all([
+    area.innerHTML = '<div class="suggest-status">Searching YouTube channel and RSS feed…</div>';
+    const [ytId, rssUrl] = await Promise.all([
       _findYouTube(query, ''),
-      _findBlog(query, ''),
+      _findSourceRSS(query),
     ]);
     btn.disabled = false; btn.textContent = '🔍 Search';
-    if (ytId)    document.getElementById('f-youtube').value = ytId;
-    if (blogUrl) document.getElementById('f-podcast').value = blogUrl;
-    if (ytId || blogUrl) {
+    if (ytId)   document.getElementById('f-youtube').value = ytId;
+    if (rssUrl) document.getElementById('f-podcast').value = rssUrl;
+    const found = [ytId ? 'YouTube' : '', rssUrl ? 'RSS feed' : ''].filter(Boolean);
+    if (found.length) {
       area.innerHTML = `<div class="suggest-status" style="text-align:left">
-        ✓ Auto-filled${ytId ? ' YouTube' : ''}${ytId && blogUrl ? ' +' : ''}${blogUrl ? ' RSS feed' : ''} — review and adjust below.</div>`;
+        ✓ Auto-filled: ${found.join(' + ')} — review and adjust below.</div>`;
     } else {
-      area.innerHTML = `<div class="suggest-status">No feeds found — paste URLs manually below.</div>`;
+      area.innerHTML = `<div class="suggest-status">No feeds found automatically — paste the RSS URL and YouTube channel below.</div>`;
     }
     return;
   }
