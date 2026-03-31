@@ -1119,6 +1119,14 @@
                font-family:'JetBrains Mono',monospace;font-size:11px;padding:8px;resize:vertical;
                width:100%;box-sizing:border-box"></textarea>
     </div>
+    <div class="settings-section-title" style="margin-top:16px">NotebookLM Library</div>
+    <div class="form-row">
+      <label>Notebooks <span style="color:var(--muted);font-weight:400">(name and URL for each curated notebook)</span></label>
+      <div id="notebook-library-rows" style="margin-top:6px"></div>
+      <button type="button" class="btn btn-ghost"
+        style="margin-top:8px;font-size:11px"
+        onclick="_addNotebookLibraryRow()">+ Add notebook</button>
+    </div>
     <div class="settings-section-title" style="margin-top:16px">Calibre Library</div>
     <div class="form-row">
       <label>Content Server URL <span style="color:var(--muted);font-weight:400">(Calibre → Preferences → Sharing → Content Server → Start Server)</span></label>
