@@ -4572,6 +4572,97 @@ function _readNotebookLibraryFromUI() {
   return lib;
 }
 
+// ── ASK MY SOURCES ──
+let _lastAskSourcesAnswer = null; // { question, answer, notebookName } — held for Save as Note
+
+function _populateNotebookDropdown(entry) {
+  const sel = document.getElementById('ask-sources-notebook');
+  if (!sel) return;
+  const lib = pwConfig.notebookLibrary || {};
+  sel.innerHTML = Object.entries(lib).map(([name, url]) =>
+    `<option value="${escHtml(url)}">${escHtml(name)}</option>`
+  ).join('');
+}
+
+function askMySourcesToggle() {
+  const panel = document.getElementById('ask-sources-panel');
+  if (!panel) return;
+  const isHidden = !panel.style.display || panel.style.display === 'none';
+  panel.style.display = isHidden ? '' : 'none';
+  if (isHidden) document.getElementById('ask-sources-input')?.focus();
+}
+
+async function askMySources() {
+  const entry = _currentModalEntry;
+  if (!entry) return;
+
+  const question    = (document.getElementById('ask-sources-input')?.value  || '').trim();
+  const notebookUrl = (document.getElementById('ask-sources-notebook')?.value || '').trim();
+
+  if (!question)    { _showToast('Please enter a question first', 2000); return; }
+  if (!notebookUrl) { _showToast('Select a notebook first', 2000); return; }
+
+  const person       = persons.find(p => p.id === entry.personId) || {};
+  const entryContext = [entry.title, person.name ? 'by ' + person.name : '', '(' + entry.platform + ')']
+    .filter(Boolean).join(' ');
+
+  // Resolve notebook name for display
+  const notebookName = Object.entries(pwConfig.notebookLibrary || {})
+    .find(([, url]) => url === notebookUrl)?.[0] || 'notebook';
+
+  const askArea = document.getElementById('ask-sources-area');
+  if (askArea) {
+    askArea.innerHTML = `<div class="ai-notes-label"><span class="ai-notes-spinner"></span> Querying <strong>${escHtml(notebookName)}</strong>… (up to 90s)</div>`;
+    askArea.style.display = '';
+  }
+
+  try {
+    const res = await fetch('http://localhost:5001/api/notebooklm/ask', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ question, notebookUrl, entryContext }),
+      signal:  AbortSignal.timeout(95000),
+    });
+    const data = await res.json();
+
+    if (!res.ok || data.error) {
+      if (askArea) askArea.innerHTML =
+        `<div class="ai-notes-label" style="color:#e84a4a">Error: ${escHtml(data.error || 'Unknown error')}</div>`;
+      return;
+    }
+
+    _lastAskSourcesAnswer = { question, answer: data.answer, notebookName };
+
+    if (askArea) {
+      askArea.innerHTML = `
+        <div class="ai-notes-label">📔 <strong>${escHtml(notebookName)}</strong>
+          <span style="color:var(--muted);font-weight:400;margin-left:8px">${escHtml(question)}</span>
+        </div>
+        <div class="ai-notes-output">${escHtml(data.answer)}</div>
+        <button class="btn btn-ghost" style="margin-top:8px;font-size:11px"
+          onclick="_saveAskSourcesAsNote()">💾 Save as Note</button>`;
+    }
+  } catch (err) {
+    if (askArea) askArea.innerHTML =
+      `<div class="ai-notes-label" style="color:#e84a4a">Error: ${escHtml(err.message)}</div>`;
+  }
+}
+
+function _saveAskSourcesAsNote() {
+  const entry = _currentModalEntry;
+  if (!entry || !_lastAskSourcesAnswer) return;
+  const { question, answer, notebookName } = _lastAskSourcesAnswer;
+  const dateStr = new Date().toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+  const header  = `[NotebookLM — ${notebookName} — ${dateStr}]\nQ: ${question}\n\n`;
+  const fullNote = header + answer;
+  const existing = (entryNotes[entry.id] || '').trim();
+  entryNotes[entry.id] = existing ? existing + '\n\n' + fullNote : fullNote;
+  saveState();
+  const notesEl = document.getElementById('modal-notes');
+  if (notesEl) notesEl.value = entryNotes[entry.id];
+  _showToast('Saved to notes ✓', 2000);
+}
+
 // ── CALIBRE INTEGRATION ──
 const _calibreCache = new Map(); // "title|author" → { found, bookId, formats } | null
 
