@@ -1103,14 +1103,39 @@
         Paste the URL as a new source inside NotebookLM.
       </label>
     </div>
-    <div class="settings-section-title" style="margin-top:16px">AI Notes Prompt</div>
+    <div class="settings-section-title" style="margin-top:16px">AI Notes — Podcast &amp; Video Prompt</div>
     <div class="form-row">
-      <label>Custom instructions for AI notes <span style="color:var(--muted);font-weight:400">(optional — appended to the default prompt)</span></label>
-      <textarea id="cfg-ai-prompt" rows="3"
+      <label>Full prompt sent to Claude for podcast and YouTube entries <span style="color:var(--muted);font-weight:400">(edit to customise — clear to restore default)</span></label>
+      <textarea id="cfg-ai-prompt-podcast" rows="12"
         style="background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);
                font-family:'JetBrains Mono',monospace;font-size:11px;padding:8px;resize:vertical;
-               width:100%;box-sizing:border-box"
-        placeholder="e.g. Focus on topics related to consciousness and biology. Flag any book recommendations."></textarea>
+               width:100%;box-sizing:border-box"></textarea>
+    </div>
+    <div class="settings-section-title" style="margin-top:16px">AI Notes — Article &amp; Blog Prompt</div>
+    <div class="form-row">
+      <label>Full prompt sent to Claude for blog and article entries <span style="color:var(--muted);font-weight:400">(edit to customise — clear to restore default)</span></label>
+      <textarea id="cfg-ai-prompt-article" rows="10"
+        style="background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);
+               font-family:'JetBrains Mono',monospace;font-size:11px;padding:8px;resize:vertical;
+               width:100%;box-sizing:border-box"></textarea>
+    </div>
+    <div class="settings-section-title" style="margin-top:16px">Calibre Library</div>
+    <div class="form-row">
+      <label>Content Server URL <span style="color:var(--muted);font-weight:400">(Calibre → Preferences → Sharing → Content Server → Start Server)</span></label>
+      <input type="text" id="cfg-calibre-url" placeholder="http://localhost:8080">
+    </div>
+    <div class="form-row" style="margin-top:6px;display:flex;gap:8px">
+      <div style="flex:1">
+        <label>Username <span style="color:var(--muted);font-weight:400">(if auth enabled)</span></label>
+        <input type="text" id="cfg-calibre-user" placeholder="optional" autocomplete="off">
+      </div>
+      <div style="flex:1">
+        <label>Password</label>
+        <input type="password" id="cfg-calibre-pass" placeholder="optional" autocomplete="off">
+      </div>
+    </div>
+    <div class="form-row" style="margin-top:8px">
+      <button class="btn btn-ghost" id="calibreTestBtn" type="button" onclick="testCalibreConnection()">Test Connection</button>
     </div>
     <div class="settings-section-title" style="margin-top:16px">Obsidian Vault</div>
     <div class="form-row">
@@ -1150,9 +1175,7 @@
         <button class="filter-chip" data-filter="youtube" onclick="setFilter('youtube')">
           <span class="chip-dot" style="background:var(--youtube)"></span>YouTube
         </button>
-        <button class="filter-chip" data-filter="twitter" onclick="setFilter('twitter')">
-          <span class="chip-dot" style="background:var(--twitter)"></span>X
-        </button>
+
         <button class="filter-chip" data-filter="blog" onclick="setFilter('blog')">
           <span class="chip-dot" style="background:var(--blog)"></span>Blog
         </button>
@@ -1241,6 +1264,7 @@
       <button id="notebookLMBtn"  class="btn btn-ghost" style="display:none" onclick="openInNotebookLM()">📔 NotebookLM</button>
       <button id="aiNotesBtn"     class="btn btn-ghost" style="display:none" onclick="generateAINotes()">🤖 AI Notes</button>
       <button id="obsidianBtn"    class="btn btn-ghost" style="display:none" onclick="sendEpisodeToObsidian()">📓 Obsidian</button>
+      <a id="calibreBtn"     href="#" target="_blank" rel="noopener" class="btn btn-ghost"   style="display:none">📚 In Calibre</a>
       <a id="modalLink"      href="#" target="_blank" rel="noopener" class="btn btn-primary" style="display:none">Open →</a>
       <a id="modalSoundLink" href="#" target="_blank" rel="noopener" class="btn btn-ghost"   style="display:none">🔊 Open Sound</a>
       <a id="modalVideoLink" href="#" target="_blank" rel="noopener" class="btn btn-primary" style="display:none">▶ Open Video</a>
@@ -1291,12 +1315,92 @@ let searchQuery   = '';   // current search filter string
 let _currentModalEntry = null;
 let _episodeDB    = null; // IndexedDB handle for full episode history
 let _addType      = 'person'; // 'person' | 'source' — current Add panel mode
+const DEFAULT_PODCAST_PROMPT = `You are an expert research assistant that extracts structured intelligence from podcast and video episodes.
+
+Analyze the provided content and return a structured briefing with the following sections:
+
+## 🎙️ Episode Overview
+- Guest(s) and their background (1-2 sentences each)
+- Core theme and what makes this episode worth listening to
+- Episode duration context (if mentioned)
+
+## 💡 Key Ideas & Arguments
+- The 3-5 most important concepts or claims made
+- Any surprising or counterintuitive findings
+- Areas of disagreement or nuance between host and guest
+
+## 👤 People Referenced
+List every person mentioned with: Name — why they were mentioned / their relevance
+
+## 📚 Books & Articles Referenced
+List every book, paper, or article mentioned with:
+- Title and author
+- Why it was recommended or referenced
+- Direct quote or paraphrase if available
+
+## 🔬 Health, Supplements & Protocols
+Extract ALL specific recommendations, protocols, or findings related to:
+- Supplements (name, dosage, timing, purpose)
+- Diet and nutrition protocols
+- Sleep optimization
+- Exercise and training methods
+- Biomarkers and testing
+- Lab work or diagnostics mentioned
+- Any warnings or contraindications noted
+
+## 🏃 Sports & Performance
+- Specific training methods, techniques, or principles discussed
+- Recovery strategies
+- Performance metrics or benchmarks mentioned
+
+## ✅ Actionable Takeaways
+Numbered list of concrete things a listener could actually do or change based on this episode. Be specific — avoid vague advice.
+
+## ❓ Open Questions & Follow-Up
+- Claims that need verification or further research
+- Topics the guest said they'd explore further
+- Things worth looking up after listening
+
+---
+Be precise. Use exact names, dosages, and numbers when mentioned. If information for a section is not present in the content, write "Not discussed" rather than speculating.`;
+
+const DEFAULT_ARTICLE_PROMPT = `You are a research assistant helping analyse written articles and blog posts.
+
+Given the content below, produce concise structured notes with the following sections:
+
+## 📌 Main Argument
+The central thesis or claim in 1–2 sentences.
+
+## 💡 Key Points
+The main supporting ideas or findings (bullet list).
+
+## 🔍 Key Insights
+The most interesting, surprising, or nuanced observations (bullet list).
+
+## 💬 Notable Quotes
+1–3 direct quotes worth remembering.
+
+## 👤 People & Resources Mentioned
+Names, books, papers, tools, studies referenced.
+
+## ✅ Actionable Takeaways
+Concrete things a reader could do or apply based on this article.
+
+---
+Be precise. Use exact names and numbers when mentioned. If a section has no relevant content, write "Not discussed".`;
+
 let pwConfig      = {     // persisted in pw-config
   anthropicKey:      '',
   notebookLMUrl:     '',
-  aiPromptExtra:     '',
+  aiPromptPodcast:   '',   // full prompt for podcast/youtube — defaults to DEFAULT_PODCAST_PROMPT
+  aiPromptArticle:   '',   // full prompt for blog/twitter  — defaults to DEFAULT_ARTICLE_PROMPT
   obsidianSubfolder: 'Pulse',
   obsidianAutoSave:  false,
+  calibreUrl:        'http://localhost:8080',
+  calibreUser:       '',
+  calibrePass:       '',
+  notebookLibrary:   {},   // { "Notebook Name": notebookUrl } — user's curated notebooks
+  notebookSkillPath: '',   // informational only; backend uses its own default path
 };
 let _vaultHandle = null;  // FileSystemDirectoryHandle for Obsidian vault
 
@@ -1332,21 +1436,27 @@ function renderFormTagChips() {
 // ── TAG FILTER BAR ──
 function renderTagFilterRow() {
   const row = document.getElementById('tagFilterRow');
-  const allTags = [...new Set(persons.flatMap(p => p.tags || []))].sort();
+  // Collect tags from both person-level tags AND entry-level tags
+  const personTagSet = new Set(persons.flatMap(p => p.tags || []));
+  const entryTagSet  = new Set(Object.values(entryTags).flat());
+  const allTags = [...new Set([...personTagSet, ...entryTagSet])].sort();
   if (allTags.length === 0) { row.innerHTML = ''; return; }
   row.innerHTML = '<span class="tag-filter-label">Topics:</span>' + allTags.map(tag => {
     const c  = tagColor(tag);
     const on = activeTag === tag;
+    // × clears the active filter when chip is active; removes globally when inactive
+    const xTitle   = on ? 'Clear filter' : 'Remove tag from all people';
+    const xHandler = on ? `setTagFilter(null)` : `removeGlobalTag('${escHtml(tag)}')`;
     return `<span class="tag-chip${on?' active':''}"
       style="background:${on ? c : c+'22'};color:${on ? '#111' : c};display:inline-flex;align-items:center;gap:4px">
       <span onclick="setTagFilter('${escHtml(tag)}')" style="cursor:pointer" title="${on ? 'Clear filter' : 'Filter by '+tag}">${escHtml(tag)}</span>
       <button class="tag-remove" type="button" title="Rename tag" style="font-size:10px;opacity:0.7" onclick="renameGlobalTag('${escHtml(tag)}')">✎</button>
-      <button class="tag-remove" type="button" title="Remove tag from all people" onclick="removeGlobalTag('${escHtml(tag)}')">×</button>
+      <button class="tag-remove" type="button" title="${xTitle}" onclick="${xHandler}">×</button>
     </span>`;
   }).join('');
 }
 function setTagFilter(tag) {
-  activeTag = (activeTag === tag) ? null : tag;
+  activeTag = (tag === null || activeTag === tag) ? null : tag;
   renderTagFilterRow();
   renderAllCards();
   if (currentView === 'timeline') renderTimeline();
@@ -2585,7 +2695,13 @@ function renderAllCards() {
   grid.innerHTML = '';
 
   let visible = activeTag
-    ? persons.filter(p => (p.tags||[]).includes(activeTag))
+    ? persons.map(p => {
+        if ((p.tags||[]).includes(activeTag)) return p;
+        // Also match persons whose entries carry the active tag
+        const taggedEntries = (p.entries||[]).filter(e => (entryTags[e.id]||[]).includes(activeTag));
+        if (taggedEntries.length) return { ...p, _tagEntries: taggedEntries };
+        return null;
+      }).filter(Boolean)
     : persons;
 
   // Apply search: only show persons with matching entries, filtered to matches only
@@ -2613,7 +2729,7 @@ function renderPersonCard(person, prepend = false, delay = 0) {
   const existing = document.getElementById('card-' + person.id);
   if (existing) existing.remove();
 
-  let entries = person._searchEntries || person.entries || [];
+  let entries = person._searchEntries || person._tagEntries || person.entries || [];
   if (currentFilter !== 'all') entries = entries.filter(e => e.platform === currentFilter);
 
   const activePlatforms = Object.entries(person.feeds).filter(([,v]) => v).map(([k]) => k);
@@ -3209,8 +3325,12 @@ function openEntry(entry) {
   const elSound = document.getElementById('modalSoundLink');
   const elVideo = document.getElementById('modalVideoLink');
 
-  // Hide all three, then show only what's relevant
-  [elOpen, elSound, elVideo].forEach(el => { el.style.display = 'none'; el.removeAttribute('href'); });
+  // Hide all action buttons, then show only what's relevant
+  const elCalibre = document.getElementById('calibreBtn');
+  [elOpen, elSound, elVideo, elCalibre].forEach(el => {
+    el.style.display = 'none'; el.removeAttribute('href');
+    el.style.opacity = ''; el.style.pointerEvents = ''; el.style.color = '';
+  });
 
   function _showOpen(url) {            // single generic Open button (non-podcast)
     elOpen.href = url; elOpen.textContent = 'Open →'; elOpen.style.display = '';
@@ -3326,6 +3446,9 @@ function openEntry(entry) {
     nbBtn.style.display  = '';   // NotebookLM — copies article URL (web source)
     aiBtn.style.display  = '';   // AI Notes — fetches article text
     obsBtn.style.display = '';   // Obsidian
+  } else if (entry.platform === 'books') {
+    // Books: check Calibre library in background
+    if (pwConfig.calibreUrl) _checkAndShowCalibreBtn(entry);
   }
 
   document.getElementById('modalOverlay').classList.add('open');
@@ -3996,10 +4119,14 @@ function toggleSettings() {
     btn.classList.remove('active');
   } else {
     // Populate fields from current config
-    document.getElementById('cfg-anthropic-key').value      = pwConfig.anthropicKey      || '';
-    document.getElementById('cfg-notebooklm-url').value     = pwConfig.notebookLMUrl     || '';
-    document.getElementById('cfg-ai-prompt').value          = pwConfig.aiPromptExtra      || '';
-    document.getElementById('cfg-obsidian-subfolder').value = pwConfig.obsidianSubfolder  || 'Pulse';
+    document.getElementById('cfg-anthropic-key').value       = pwConfig.anthropicKey      || '';
+    document.getElementById('cfg-notebooklm-url').value      = pwConfig.notebookLMUrl     || '';
+    document.getElementById('cfg-ai-prompt-podcast').value   = pwConfig.aiPromptPodcast   || DEFAULT_PODCAST_PROMPT;
+    document.getElementById('cfg-ai-prompt-article').value   = pwConfig.aiPromptArticle   || DEFAULT_ARTICLE_PROMPT;
+    document.getElementById('cfg-calibre-url').value         = pwConfig.calibreUrl        || 'http://localhost:8080';
+    document.getElementById('cfg-calibre-user').value        = pwConfig.calibreUser       || '';
+    document.getElementById('cfg-calibre-pass').value        = pwConfig.calibrePass       || '';
+    document.getElementById('cfg-obsidian-subfolder').value  = pwConfig.obsidianSubfolder  || 'Pulse';
     document.getElementById('cfg-obsidian-autosave').checked = !!pwConfig.obsidianAutoSave;
     _refreshVaultNameTag();
     panel.classList.add('open');
@@ -4010,9 +4137,14 @@ function toggleSettings() {
 function saveSettings() {
   pwConfig.anthropicKey      = document.getElementById('cfg-anthropic-key').value.trim();
   pwConfig.notebookLMUrl     = document.getElementById('cfg-notebooklm-url').value.trim();
-  pwConfig.aiPromptExtra     = document.getElementById('cfg-ai-prompt').value.trim();
+  pwConfig.aiPromptPodcast   = document.getElementById('cfg-ai-prompt-podcast').value.trim();
+  pwConfig.aiPromptArticle   = document.getElementById('cfg-ai-prompt-article').value.trim();
+  pwConfig.calibreUrl        = document.getElementById('cfg-calibre-url').value.trim()  || 'http://localhost:8080';
+  pwConfig.calibreUser       = document.getElementById('cfg-calibre-user').value.trim();
+  pwConfig.calibrePass       = document.getElementById('cfg-calibre-pass').value;
   pwConfig.obsidianSubfolder = document.getElementById('cfg-obsidian-subfolder').value.trim() || 'Pulse';
   pwConfig.obsidianAutoSave  = document.getElementById('cfg-obsidian-autosave').checked;
+  _calibreCache.clear(); // clear cache when settings change
   saveConfig();
   const panel = document.getElementById('settingsPanel');
   const btn   = document.getElementById('settingsBtn');
@@ -4292,33 +4424,10 @@ async function generateAINotes() {
             : `EPISODE DESCRIPTION:\n${descText || '(no description available)'}`,
         ].filter(l => l !== undefined).join('\n');
 
-    // Build system prompt — adapted for articles vs. audio/video
-    const defaultInstructions = isArticle
-      ? [
-          'You are a research assistant helping analyse written articles and blog posts.',
-          'Given the content below, produce concise structured notes with the following sections:',
-          '• **Main Argument** — the central thesis or claim in 1–2 sentences',
-          '• **Key Points** — the main supporting ideas or findings (bullet list)',
-          '• **Key Insights** — the most interesting, surprising, or nuanced observations (bullet list)',
-          '• **Notable Quotes** — 1–3 direct quotes worth remembering',
-          '• **People & Resources Mentioned** — names, books, papers, tools, studies referenced',
-          '• **My Takeaways** — leave this section blank for the user to fill in',
-          'Be concise. Use plain text, not markdown headers. Separate sections with blank lines.',
-        ].join('\n')
-      : [
-          'You are a research assistant helping analyse podcast and video content.',
-          'Given the content below, produce concise structured notes with the following sections:',
-          '• **Key Topics** — main subjects discussed (bullet list)',
-          '• **Key Insights** — the most interesting or surprising ideas (bullet list)',
-          '• **Notable Quotes** — 1–3 direct quotes worth remembering (if transcript available)',
-          '• **People & Resources Mentioned** — names, books, papers, tools referenced',
-          '• **My Takeaways** — leave this section blank for the user to fill in',
-          'Be concise. Use plain text, not markdown headers. Separate sections with blank lines.',
-        ].join('\n');
-
-    const systemPrompt = pwConfig.aiPromptExtra
-      ? `${defaultInstructions}\n\nAdditional user instructions: ${pwConfig.aiPromptExtra}`
-      : defaultInstructions;
+    // Use full prompts from Settings (fall back to built-in defaults if empty)
+    const systemPrompt = isArticle
+      ? (pwConfig.aiPromptArticle || DEFAULT_ARTICLE_PROMPT)
+      : (pwConfig.aiPromptPodcast || DEFAULT_PODCAST_PROMPT);
 
     const result = await callClaude(pwConfig.anthropicKey, systemPrompt, contentLines);
 
@@ -4363,10 +4472,138 @@ async function generateAINotes() {
   }
 }
 
+let _backendOnline = false;   // true when Pulse backend is running on localhost:5001
+
+async function _checkBackend() {
+  try {
+    const r = await fetch('http://localhost:5001/api/health',
+      { signal: AbortSignal.timeout(2000) });
+    _backendOnline = r.ok;
+  } catch { _backendOnline = false; }
+}
+
+// ── CALIBRE INTEGRATION ──
+const _calibreCache = new Map(); // "title|author" → { found, bookId, formats } | null
+
+async function searchCalibre(title, author) {
+  const key = `${title}|${author || ''}`.toLowerCase();
+  if (_calibreCache.has(key)) return _calibreCache.get(key);
+
+  const baseUrl = (pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
+  const headers = {};
+  if (pwConfig.calibreUser) {
+    headers['Authorization'] = 'Basic ' + btoa(`${pwConfig.calibreUser}:${pwConfig.calibrePass}`);
+  }
+
+  try {
+    // Search by title
+    const query  = encodeURIComponent(`title:"${title}"`);
+    const res    = await fetch(`${baseUrl}/ajax/search?query=${query}&num=10`, { headers });
+    if (!res.ok) { _calibreCache.set(key, null); return null; }
+    const data   = await res.json();
+
+    if (!data.book_ids || data.book_ids.length === 0) {
+      const r = { found: false };
+      _calibreCache.set(key, r); return r;
+    }
+
+    // Fetch metadata to verify author match
+    const ids    = data.book_ids.slice(0, 10).join(',');
+    const metaRes = await fetch(`${baseUrl}/ajax/books?ids=${ids}&fields=title,authors,formats`, { headers });
+    if (!metaRes.ok) { _calibreCache.set(key, null); return null; }
+    const meta   = await metaRes.json();
+
+    let bestMatch = null;
+    const authorLast = author ? author.toLowerCase().split(' ').pop() : '';
+
+    for (const [id, book] of Object.entries(meta)) {
+      const bookAuthors = (book.authors || []).join(' ').toLowerCase();
+      if (!authorLast || bookAuthors.includes(authorLast)) {
+        bestMatch = { found: true, bookId: parseInt(id), formats: book.formats || [], title: book.title };
+        break;
+      }
+    }
+
+    // If no author match, take first result anyway (title match is usually enough)
+    if (!bestMatch) {
+      const firstId   = data.book_ids[0];
+      const firstBook = meta[firstId] || {};
+      bestMatch = { found: true, bookId: firstId, formats: firstBook.formats || [], title: firstBook.title };
+    }
+
+    _calibreCache.set(key, bestMatch);
+    return bestMatch;
+  } catch (e) {
+    _calibreCache.set(key, null);
+    return null;
+  }
+}
+
+async function testCalibreConnection() {
+  const btn = document.getElementById('calibreTestBtn');
+  if (!btn) return;
+  btn.textContent = '⏳ Testing…';
+  btn.disabled = true;
+  try {
+    const baseUrl = (pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
+    const headers = {};
+    if (pwConfig.calibreUser)
+      headers['Authorization'] = 'Basic ' + btoa(`${pwConfig.calibreUser}:${pwConfig.calibrePass}`);
+    const res = await fetch(`${baseUrl}/ajax/search?query=*&num=1`, { headers });
+    if (res.ok) {
+      btn.textContent = '✓ Connected';
+      btn.style.color = 'var(--blog)';
+    } else {
+      throw new Error('HTTP ' + res.status);
+    }
+  } catch (e) {
+    btn.textContent = '✗ Failed — ' + e.message;
+    btn.style.color = '#e84a4a';
+  }
+  btn.disabled = false;
+  setTimeout(() => { btn.textContent = 'Test Connection'; btn.style.color = ''; }, 4000);
+}
+
+async function _checkAndShowCalibreBtn(entry) {
+  const btn = document.getElementById('calibreBtn');
+  if (!btn) return;
+  // Only show for book entries and when server is configured
+  if (entry.platform !== 'books') { btn.style.display = 'none'; return; }
+
+  btn.textContent = '📚 Checking…';
+  btn.style.display = '';
+  btn.style.opacity = '0.5';
+  btn.style.pointerEvents = 'none';
+  btn.removeAttribute('href');
+
+  const result = await searchCalibre(entry.title, entry.author || '');
+
+  if (result && result.found) {
+    const baseUrl  = (pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
+    btn.href       = `${baseUrl}/browse/book/${result.bookId}`;
+    btn.textContent = '📚 In My Library';
+    btn.style.opacity = '';
+    btn.style.pointerEvents = '';
+    btn.style.color = 'var(--books)';
+  } else if (result && !result.found) {
+    btn.textContent = '📚 Not in Library';
+    btn.style.opacity = '0.4';
+    btn.style.pointerEvents = 'none';
+  } else {
+    // null = server unreachable — show a muted hint so the user knows to configure it
+    btn.removeAttribute('href');
+    btn.textContent = '📚 Calibre offline';
+    btn.style.opacity = '0.35';
+    btn.style.pointerEvents = 'none';
+    btn.title = 'Start Calibre Content Server (Preferences → Sharing → Content Server) and add CORS header: Access-Control-Allow-Origin: *';
+  }
+}
+
 // ── INIT ──
 loadState();
 loadConfig();
 _restoreVaultHandle();  // async — restores Obsidian vault handle if permission still granted
+_checkBackend();        // async — detect if Pulse backend is running on localhost:5001
 renderAllCards();
 renderTagFilterRow();
 updateStatus();
