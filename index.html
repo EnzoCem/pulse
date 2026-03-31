@@ -3347,11 +3347,22 @@ function openEntry(entry) {
   const elVideo = document.getElementById('modalVideoLink');
 
   // Hide all action buttons, then show only what's relevant
-  const elCalibre = document.getElementById('calibreBtn');
+  const elCalibre    = document.getElementById('calibreBtn');
+  const elAskSources = document.getElementById('askSourcesBtn');
   [elOpen, elSound, elVideo, elCalibre].forEach(el => {
     el.style.display = 'none'; el.removeAttribute('href');
     el.style.opacity = ''; el.style.pointerEvents = ''; el.style.color = '';
   });
+  if (elAskSources) {
+    elAskSources.style.display = 'none';
+    elAskSources.textContent   = '📔 My Notebooks';
+    elAskSources.disabled      = false;
+  }
+  // Reset ask-sources panel and answer area
+  const askPanel = document.getElementById('ask-sources-panel');
+  if (askPanel) askPanel.style.display = 'none';
+  const askArea = document.getElementById('ask-sources-area');
+  if (askArea) { askArea.innerHTML = ''; askArea.style.display = 'none'; }
 
   function _showOpen(url) {            // single generic Open button (non-podcast)
     elOpen.href = url; elOpen.textContent = 'Open →'; elOpen.style.display = '';
@@ -3470,6 +3481,14 @@ function openEntry(entry) {
   } else if (entry.platform === 'books') {
     // Books: check Calibre library in background
     if (pwConfig.calibreUrl) _checkAndShowCalibreBtn(entry);
+  }
+
+  // My Notebooks — show if backend is online and at least one notebook is configured
+  if (_backendOnline && Object.keys(pwConfig.notebookLibrary || {}).length > 0) {
+    if (elAskSources) {
+      elAskSources.style.display = '';
+      _populateNotebookDropdown(entry);
+    }
   }
 
   document.getElementById('modalOverlay').classList.add('open');
