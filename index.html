@@ -4144,6 +4144,7 @@ function toggleSettings() {
     document.getElementById('cfg-notebooklm-url').value      = pwConfig.notebookLMUrl     || '';
     document.getElementById('cfg-ai-prompt-podcast').value   = pwConfig.aiPromptPodcast   || DEFAULT_PODCAST_PROMPT;
     document.getElementById('cfg-ai-prompt-article').value   = pwConfig.aiPromptArticle   || DEFAULT_ARTICLE_PROMPT;
+    _renderNotebookLibraryRows();
     document.getElementById('cfg-calibre-url').value         = pwConfig.calibreUrl        || 'http://localhost:8080';
     document.getElementById('cfg-calibre-user').value        = pwConfig.calibreUser       || '';
     document.getElementById('cfg-calibre-pass').value        = pwConfig.calibrePass       || '';
@@ -4160,6 +4161,7 @@ function saveSettings() {
   pwConfig.notebookLMUrl     = document.getElementById('cfg-notebooklm-url').value.trim();
   pwConfig.aiPromptPodcast   = document.getElementById('cfg-ai-prompt-podcast').value.trim();
   pwConfig.aiPromptArticle   = document.getElementById('cfg-ai-prompt-article').value.trim();
+  pwConfig.notebookLibrary   = _readNotebookLibraryFromUI();
   pwConfig.calibreUrl        = document.getElementById('cfg-calibre-url').value.trim()  || 'http://localhost:8080';
   pwConfig.calibreUser       = document.getElementById('cfg-calibre-user').value.trim();
   pwConfig.calibrePass       = document.getElementById('cfg-calibre-pass').value;
@@ -4501,6 +4503,54 @@ async function _checkBackend() {
       { signal: AbortSignal.timeout(2000) });
     _backendOnline = r.ok;
   } catch { _backendOnline = false; }
+}
+
+// ── NOTEBOOK LIBRARY UI HELPERS ──
+function _renderNotebookLibraryRows() {
+  const container = document.getElementById('notebook-library-rows');
+  if (!container) return;
+  const lib = pwConfig.notebookLibrary || {};
+  container.innerHTML = Object.entries(lib).map(([name, url]) => `
+    <div class="notebook-lib-row" style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
+      <input type="text" value="${escHtml(name)}" placeholder="Notebook name" data-lib-name
+        style="width:140px;background:var(--bg);border:1px solid var(--border);border-radius:4px;
+               color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px">
+      <input type="text" value="${escHtml(url)}"
+        placeholder="https://notebooklm.google.com/notebook/…" data-lib-url
+        style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;
+               color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px">
+      <button type="button" class="tag-remove" title="Remove"
+        onclick="this.closest('.notebook-lib-row').remove()">×</button>
+    </div>`).join('');
+}
+
+function _addNotebookLibraryRow() {
+  const container = document.getElementById('notebook-library-rows');
+  if (!container) return;
+  const row = document.createElement('div');
+  row.className = 'notebook-lib-row';
+  row.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:center';
+  row.innerHTML = `
+    <input type="text" placeholder="Notebook name" data-lib-name
+      style="width:140px;background:var(--bg);border:1px solid var(--border);border-radius:4px;
+             color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px">
+    <input type="text" placeholder="https://notebooklm.google.com/notebook/…" data-lib-url
+      style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;
+             color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px">
+    <button type="button" class="tag-remove" title="Remove"
+      onclick="this.closest('.notebook-lib-row').remove()">×</button>`;
+  container.appendChild(row);
+  row.querySelector('[data-lib-name]').focus();
+}
+
+function _readNotebookLibraryFromUI() {
+  const lib = {};
+  document.querySelectorAll('.notebook-lib-row').forEach(row => {
+    const name = (row.querySelector('[data-lib-name]')?.value || '').trim();
+    const url  = (row.querySelector('[data-lib-url]')?.value  || '').trim();
+    if (name && url) lib[name] = url;
+  });
+  return lib;
 }
 
 // ── CALIBRE INTEGRATION ──
