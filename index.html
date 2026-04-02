@@ -2819,6 +2819,7 @@ function renderPersonCard(person, prepend = false, delay = 0) {
     }).join('');
   }
 
+  const bgDot       = person.backgroundRefreshing ? '<div class="bg-refresh-dot"></div>' : '';
   const lastUpdated = person.lastUpdated ? 'Updated ' + timeAgo(new Date(person.lastUpdated)) : 'Never fetched';
   const fetchErrors = person.fetchErrors || [];
   const errorHtml   = fetchErrors.length
@@ -2830,6 +2831,7 @@ function renderPersonCard(person, prepend = false, delay = 0) {
   card.id = 'card-' + person.id;
   card.style.animationDelay = delay + 'ms';
   card.innerHTML = `
+    ${bgDot}
     <div class="card-header" onclick="openPersonDetail('${person.id}')">
       <div class="avatar">${avatarContent}</div>
       <div class="card-person-info">
