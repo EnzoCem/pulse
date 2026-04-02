@@ -57,7 +57,8 @@ Pulse/
   entries:     Entry[],       // max 20, sorted newest first
   lastUpdated: string|null,   // ISO 8601
   fetchErrors: string[],      // platforms that failed on last refresh
-  loading:     boolean,       // runtime only — always false when saved
+  loading:     boolean,       // runtime only — true during manual/first fetch, always false when saved
+  backgroundRefreshing: boolean, // runtime only — true during TTL background refresh, always false when saved
 }
 ```
 
@@ -95,6 +96,7 @@ Pulse/
 |---|---|
 | `loadState()` | Load persons + seenIds from localStorage, seed with DEMO_PERSONS if empty |
 | `saveState()` | Persist persons + seenIds to localStorage |
+| `ensureFresh(person)` | Stale-while-revalidate: no-op if fresh (<6h), background refresh if stale, blocking fetch if never fetched |
 | `fetchPerson(person)` | Fetch all feeds in parallel (30s hard cap), update entries |
 | `fetchRSS(url, platform, personId)` | Fetch one RSS URL via CORS proxy chain, parse XML, return `{entries, error}` |
 | `fetchBooks(query, personId)` | Query Google Books API, return English-only deduplicated Entry[] |
@@ -161,14 +163,14 @@ Fonts: Playfair Display (headings/names), JetBrains Mono (UI/labels), Libre Bask
 2. **X/Twitter via Nitter** — free but fragile. Nitter instances come and go as X blocks them. The `NITTER_INSTANCES` array at the top of the JS can be updated when instances go down.
 3. **YouTube channel ID** — stored as `UC…` ID. The form accepts @handles and URLs and auto-resolves on save. If the stored value is not a valid `UC…` ID, YouTube fetching is silently skipped.
 4. **Google Books accuracy** — `langRestrict=en` is requested and results are client-filtered to `language === 'en'`, but Google Books metadata is imperfect and some non-English editions may still appear.
-5. **No auto-refresh** — Fetching only happens on user action (Refresh All or per-card ↻).
+5. **Background refresh (TTL-based)** — `ensureFresh()` fires automatically on page load (staggered 600ms apart) and on `openPersonDetail`. Feeds older than 6 hours (`FEED_TTL_MS`) are refreshed in the background; a pulsing dot badge indicates progress. Manual refresh (↻ / Refresh All) always fetches immediately regardless of age.
 6. **Entry limit** — Each person stores max 20 entries. Cards show only the top 4.
 
 ---
 
 ## Roadmap (in priority order)
 
-1. **Auto-refresh** — `setInterval` every N minutes, configurable, with a visual countdown
+1. **Auto-refresh on interval** — `setInterval` every N minutes, configurable, with a visual countdown (TTL-based background refresh on load/open is already done)
 2. **Show more entries** — Expand button on cards to see all 20 (or paginate)
 3. **Export/import** — JSON dump of persons list for backup and transfer
 4. **Browser notifications** — `Notification API` for new items in background

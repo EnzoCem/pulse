@@ -214,6 +214,8 @@ RSS feeds are fetched through a chain of three public CORS proxies, tried in ord
   entries:     Entry[],       // max 20, sorted newest first
   lastUpdated: string|null,   // ISO 8601
   fetchErrors: string[],      // platforms that failed on last refresh
+  loading:     boolean,       // runtime only — true during manual refresh, always false when saved
+  backgroundRefreshing: boolean, // runtime only — true during background TTL refresh, always false when saved
 }
 
 // Entry
@@ -270,9 +272,10 @@ RSS feeds are fetched through a chain of three public CORS proxies, tried in ord
 - [x] X/Twitter via free Nitter instances (accepts @username, no paid subscription needed)
 - [x] Person-level topic tags with TOPICS filter bar (rename/remove globally)
 - [x] Website field on person/source profiles
+- [x] Stale-while-revalidate background refresh — feeds older than 6 hours auto-refresh on page load and card open, with pulsing badge indicator
 
 ### Planned
-- [ ] Auto-refresh every N minutes with visual countdown
+- [ ] Auto-refresh on a fixed interval (e.g. every N minutes) with configurable timer and visual countdown
 - [ ] Show more than 4 entries per card (expand / paginate)
 - [ ] Keyword search across all entry titles and descriptions
 - [ ] Export / import persons list as JSON backup
