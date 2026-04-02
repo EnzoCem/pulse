@@ -3070,6 +3070,32 @@ async function fetchPerson(person) {
   if (btn) btn.classList.remove('spinning');
 }
 
+// ── STALE-WHILE-REVALIDATE ──
+// Checks person.lastUpdated against FEED_TTL_MS.
+// - Never fetched       → fetchPerson (fire-and-forget, full spinner)
+// - Age >= FEED_TTL_MS  → fetchPerson in background, show dot badge
+// - Age <  FEED_TTL_MS  → no-op (still fresh)
+// Guards against concurrent fetches (loading or backgroundRefreshing already set).
+function ensureFresh(person) {
+  if (!person) return
+  if (person.loading || person.backgroundRefreshing) return
+
+  if (!person.lastUpdated) {
+    fetchPerson(person)
+    return
+  }
+
+  const age = Date.now() - new Date(person.lastUpdated).getTime()
+  if (age < FEED_TTL_MS) return
+
+  person.backgroundRefreshing = true
+  renderPersonCard(person, false)
+
+  fetchPerson(person).finally(() => {
+    person.backgroundRefreshing = false
+  })
+}
+
 // ── RSS FEED DISCOVERY HELPERS ──
 
 // Returns true if the given text looks like an RSS or Atom feed.
