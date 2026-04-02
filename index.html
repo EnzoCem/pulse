@@ -250,6 +250,7 @@
     transition: border-color 0.2s, transform 0.2s;
     animation: cardIn 0.3s ease forwards;
     opacity: 0;
+    position: relative;
   }
   .person-card:hover {
     border-color: #3a3a48;
@@ -259,8 +260,6 @@
     from { opacity:0; transform:translateY(12px); }
     to   { opacity:1; transform:translateY(0); }
   }
-
-  .person-card { position: relative; }
 
   .card-header {
     display: flex; align-items: center; gap: 12px;
@@ -3104,6 +3103,7 @@ function ensureFresh(person) {
 
   fetchPerson(person).finally(() => {
     person.backgroundRefreshing = false
+    renderPersonCard(person, false)
   })
 }
 
