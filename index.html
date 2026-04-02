@@ -1307,6 +1307,7 @@ function getPlatform(entry, person) {
 const CORS_PRIMARY   = 'https://corsproxy.io/?';
 const CORS_FALLBACK  = 'https://api.allorigins.win/raw?url=';
 const CORS_FALLBACK2 = 'https://api.codetabs.com/v1/proxy?quest=';
+const FEED_TTL_MS = 6 * 60 * 60 * 1000  // 6 hours — background refresh threshold
 
 // Free Nitter instances for X/Twitter RSS (tried in order; first working one wins)
 
