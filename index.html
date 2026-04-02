@@ -2000,6 +2000,7 @@ function backToPeople() {
 function openPersonDetail(personId) {
   const person = persons.find(p => p.id === personId);
   if (!person) return;
+  ensureFresh(person);
   currentPerson   = person;
   _detailFilter   = 'all';
   _detailFormTags = [...(person.tags || [])];
