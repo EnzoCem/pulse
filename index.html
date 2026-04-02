@@ -1887,7 +1887,7 @@ const DEMO_PERSONS = [
 // ── STORAGE ──
 function saveState() {
   try {
-    localStorage.setItem('pw-persons',    JSON.stringify(persons.map(p => ({ ...p, loading: false }))));
+    localStorage.setItem('pw-persons',    JSON.stringify(persons.map(p => ({ ...p, loading: false, backgroundRefreshing: false }))));
     localStorage.setItem('pw-seen',       JSON.stringify([...seenIds]));
     localStorage.setItem('pw-listened',   JSON.stringify([...listenedIds]));
     localStorage.setItem('pw-entry-tags', JSON.stringify(entryTags));
@@ -1950,7 +1950,7 @@ function loadState() {
       });
       localStorage.setItem('pw-feed-migration-v2', '1');
       // Save immediately so the stale URLs don't come back on next load
-      localStorage.setItem('pw-persons', JSON.stringify(persons.map(p => ({ ...p, loading: false }))));
+      localStorage.setItem('pw-persons', JSON.stringify(persons.map(p => ({ ...p, loading: false, backgroundRefreshing: false }))));
     }
     const savedSeen = localStorage.getItem('pw-seen');
     if (savedSeen) seenIds = new Set(JSON.parse(savedSeen));
