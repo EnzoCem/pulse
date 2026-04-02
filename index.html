@@ -260,6 +260,8 @@
     to   { opacity:1; transform:translateY(0); }
   }
 
+  .person-card { position: relative; }
+
   .card-header {
     display: flex; align-items: center; gap: 12px;
     padding: 14px 16px;
@@ -391,6 +393,23 @@
   .card-refresh-btn:hover { color: var(--accent); }
   .card-refresh-btn.spinning { animation: spin 0.8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  .bg-refresh-dot {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent, #7c6af7);
+    opacity: 0.85;
+    animation: pulse-dot 1.4s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { transform: scale(1);   opacity: 0.85; }
+    50%       { transform: scale(1.5); opacity: 0.4;  }
+  }
 
   .card-last-updated {
     font-size: 10px; color: var(--muted);
