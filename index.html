@@ -4845,6 +4845,11 @@ _checkBackend();        // async — detect if Pulse backend is running on local
 renderAllCards();
 renderTagFilterRow();
 updateStatus();
+// Stale-while-revalidate: check each person after UI is rendered.
+// 600ms stagger avoids hammering CORS proxies simultaneously on load.
+persons.forEach((person, i) => {
+  setTimeout(() => ensureFresh(person), i * 600)
+})
 </script>
 </body>
 </html>
