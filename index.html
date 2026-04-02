@@ -3081,11 +3081,19 @@ function ensureFresh(person) {
   if (person.loading || person.backgroundRefreshing) return
 
   if (!person.lastUpdated) {
+    person.loading = true
     fetchPerson(person)
     return
   }
 
   const age = Date.now() - new Date(person.lastUpdated).getTime()
+
+  if (isNaN(age)) {
+    person.loading = true
+    fetchPerson(person)
+    return
+  }
+
   if (age < FEED_TTL_MS) return
 
   person.backgroundRefreshing = true
