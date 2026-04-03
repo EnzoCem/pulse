@@ -4245,7 +4245,7 @@ function saveSettings() {
   pwConfig.calibrePass       = document.getElementById('cfg-calibre-pass').value;
   pwConfig.obsidianSubfolder = document.getElementById('cfg-obsidian-subfolder').value.trim() || 'Pulse';
   pwConfig.obsidianAutoSave  = document.getElementById('cfg-obsidian-autosave').checked;
-  _calibreCache.clear(); // clear cache when settings change
+  searchCalibre.cache.clear(); // clear cache when settings change
   saveConfig();
   const panel = document.getElementById('settingsPanel');
   const btn   = document.getElementById('settingsBtn');
@@ -4728,12 +4728,42 @@ function _saveAskSourcesAsNote() {
 }
 
 // ── CALIBRE INTEGRATION ──
-const _calibreCache = new Map(); // "title|author" → { found, bookId, formats } | null
 
-async function searchCalibre(title, author) {
-  const key = `${title}|${author || ''}`.toLowerCase();
-  if (_calibreCache.has(key)) return _calibreCache.get(key);
+// memoizeWithTTLAsync — stale-while-revalidate async memoization (adapted from Main Rules/utilities/js/memoize.js)
+function memoizeWithTTLAsync(fn, ttlMs = 5 * 60 * 1000) {
+  const cache = new Map();
+  const inFlight = new Map();
+  const memoized = async function (...args) {
+    const key = JSON.stringify(args);
+    const cached = cache.get(key);
+    const now = Date.now();
+    if (!cached) {
+      if (inFlight.has(key)) return inFlight.get(key);
+      const promise = fn(...args);
+      inFlight.set(key, promise);
+      try {
+        const result = await promise;
+        if (inFlight.get(key) === promise) cache.set(key, { value: result, timestamp: now, refreshing: false });
+        return result;
+      } finally {
+        if (inFlight.get(key) === promise) inFlight.delete(key);
+      }
+    }
+    if (now - cached.timestamp > ttlMs && !cached.refreshing) {
+      cached.refreshing = true;
+      const staleEntry = cached;
+      fn(...args)
+        .then(v  => { if (cache.get(key) === staleEntry) cache.set(key, { value: v, timestamp: Date.now(), refreshing: false }); })
+        .catch(() => { if (cache.get(key) === staleEntry) cache.delete(key); });
+      return cached.value;
+    }
+    return cache.get(key).value;
+  };
+  memoized.cache = { clear: () => { cache.clear(); inFlight.clear(); } };
+  return memoized;
+}
 
+async function _searchCalibreInner(title, author) {
   const baseUrl = (pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
   const headers = {};
   if (pwConfig.calibreUser) {
@@ -4744,19 +4774,16 @@ async function searchCalibre(title, author) {
     // Search by title
     const query  = encodeURIComponent(`title:"${title}"`);
     const res    = await fetch(`${baseUrl}/ajax/search?query=${query}&num=10`, { headers });
-    if (!res.ok) { _calibreCache.set(key, null); return null; }
+    if (!res.ok) return null;
     const data   = await res.json();
 
-    if (!data.book_ids || data.book_ids.length === 0) {
-      const r = { found: false };
-      _calibreCache.set(key, r); return r;
-    }
+    if (!data.book_ids || data.book_ids.length === 0) return { found: false };
 
     // Fetch metadata to verify author match
-    const ids    = data.book_ids.slice(0, 10).join(',');
+    const ids     = data.book_ids.slice(0, 10).join(',');
     const metaRes = await fetch(`${baseUrl}/ajax/books?ids=${ids}&fields=title,authors,formats`, { headers });
-    if (!metaRes.ok) { _calibreCache.set(key, null); return null; }
-    const meta   = await metaRes.json();
+    if (!metaRes.ok) return null;
+    const meta    = await metaRes.json();
 
     let bestMatch = null;
     const authorLast = author ? author.toLowerCase().split(' ').pop() : '';
@@ -4776,13 +4803,14 @@ async function searchCalibre(title, author) {
       bestMatch = { found: true, bookId: firstId, formats: firstBook.formats || [], title: firstBook.title };
     }
 
-    _calibreCache.set(key, bestMatch);
     return bestMatch;
   } catch (e) {
-    _calibreCache.set(key, null);
     return null;
   }
 }
+
+// 5-minute TTL: results auto-expire so adding a book mid-session is eventually reflected
+const searchCalibre = memoizeWithTTLAsync(_searchCalibreInner, 5 * 60 * 1000);
 
 async function testCalibreConnection() {
   const btn = document.getElementById('calibreTestBtn');
