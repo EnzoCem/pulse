@@ -3540,13 +3540,15 @@ function openEntry(entry) {
     if (pwConfig.calibreUrl) _checkAndShowCalibreBtn(entry);
   }
 
-  // My Notebooks — show if backend is online and at least one notebook is configured
-  if (_backendOnline && Object.keys(pwConfig.notebookLibrary || {}).length > 0) {
-    if (elAskSources) {
-      elAskSources.style.display = '';
-      _populateNotebookDropdown(entry);
+  // My Notebooks — re-check backend freshly each time the modal opens, then show button
+  _checkBackend().then(() => {
+    if (_backendOnline && Object.keys(pwConfig.notebookLibrary || {}).length > 0) {
+      if (elAskSources) {
+        elAskSources.style.display = '';
+        _populateNotebookDropdown(entry);
+      }
     }
-  }
+  });
 
   document.getElementById('modalOverlay').classList.add('open');
   renderAllCards(); updateStatus();
@@ -4630,7 +4632,8 @@ function _readNotebookLibraryFromUI() {
 }
 
 // ── ASK MY SOURCES ──
-let _lastAskSourcesAnswer = null; // { question, answer, notebookName } — held for Save as Note
+let _lastAskSourcesAnswer = null;  // { question, answer, notebookName } — held for Save as Note
+let _askingInProgress    = false;  // guard against concurrent Ask requests
 
 function _populateNotebookDropdown(entry) {
   const sel = document.getElementById('ask-sources-notebook');
@@ -4650,6 +4653,7 @@ function askMySourcesToggle() {
 }
 
 async function askMySources() {
+  if (_askingInProgress) { _showToast('Query in progress…', 2000); return; }
   const entry = _currentModalEntry;
   if (!entry) return;
 
@@ -4673,6 +4677,7 @@ async function askMySources() {
     askArea.style.display = '';
   }
 
+  _askingInProgress = true;
   try {
     const res = await fetch('http://localhost:5001/api/notebooklm/ask', {
       method:  'POST',
@@ -4702,6 +4707,8 @@ async function askMySources() {
   } catch (err) {
     if (askArea) askArea.innerHTML =
       `<div class="ai-notes-label" style="color:#e84a4a">Error: ${escHtml(err.message)}</div>`;
+  } finally {
+    _askingInProgress = false;
   }
 }
 
