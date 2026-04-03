@@ -34,6 +34,17 @@ def handle_options(path):
     response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
     return response
 
+# ── Root ───────────────────────────────────────────────────────────────────────
+@app.route('/', methods=['GET'])
+def index():
+    skill_ok = os.path.isfile(os.path.join(SKILL_PATH, 'scripts', 'run.py'))
+    return (
+        f'<h2>Pulse Backend</h2>'
+        f'<p>Status: ✅ running</p>'
+        f'<p>NotebookLM skill: {"✅ found" if skill_ok else "❌ not found"}</p>'
+        f'<p><a href="/api/health">/api/health</a></p>'
+    )
+
 # ── Health check ───────────────────────────────────────────────────────────────
 @app.route('/api/health', methods=['GET'])
 def health():
