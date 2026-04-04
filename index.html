@@ -3528,7 +3528,12 @@ async function fetchPerson(person) {
   const TIMEOUT = new Promise(resolve => setTimeout(resolve, 30000));
   await Promise.race([Promise.allSettled(tasks), TIMEOUT]);
 
-  person.entries     = deduplicateEntries(newEntries).slice(0, 20);
+  // Keep books separate — they have old publication dates and would be cut off
+  // by the 20-entry slice if podcast + YouTube fill all slots with newer dates.
+  const bookEntries  = newEntries.filter(e => e.platform === 'books');
+  const otherEntries = newEntries.filter(e => e.platform !== 'books');
+  const otherKept    = deduplicateEntries(otherEntries).slice(0, 20);
+  person.entries     = [...otherKept, ...bookEntries.slice(0, 15)];
   person.lastUpdated = new Date().toISOString();
   person.fetchErrors = failedFeeds;
   person.loading     = false;
