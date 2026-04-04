@@ -247,15 +247,25 @@ RSS feeds are fetched through a chain of three public CORS proxies, tried in ord
 
 ---
 
+## Data storage and browser profiles
+
+All data is stored in **`localStorage`**, which is **isolated per Chrome profile** (account). If you open Pulse in a different Chrome profile, it will have its own empty localStorage — persons and sources defined in Profile A are not visible in Profile B.
+
+**Workaround:** Always open Pulse in the same Chrome profile. A JSON export/import feature is planned to allow manual transfer between profiles or as a backup.
+
+---
+
 ## Roadmap
 
 ### Done
 - [x] People view + Timeline view
 - [x] Platform and topic filtering (Podcast / YouTube / X / Blog / Books)
 - [x] Edit person (feeds, name, avatar, tags, website) via detail panel
+- [x] Per-feed status dot (green/yellow/red/grey) in edit panel showing last fetch result
+- [x] Per-feed enable/disable toggle — disable a feed without deleting the URL
 - [x] Auto-search from person name (iTunes + YouTube + blog detection)
 - [x] Apple Podcasts URL → RSS feed auto-resolution (iTunes lookup by ID)
-- [x] YouTube handle / URL → channel ID auto-resolution
+- [x] YouTube handle / URL → channel ID auto-resolution (forHandle endpoint + legacy ?user= + page scrape)
 - [x] YouTube-as-podcast mode (no RSS needed for YouTube-only shows)
 - [x] RSS feed autodiscovery for website URLs (3-stage: HTML link tag → path probing → Feedly API)
 - [x] Podcast ad stripping from descriptions
@@ -267,28 +277,30 @@ RSS feeds are fetched through a chain of three public CORS proxies, tried in ord
 - [x] Per-entry notes (manual text saved in localStorage)
 - [x] Per-entry topic tags
 - [x] AI Notes via Claude API — YouTube transcript + article text, structured output
+- [x] YouTube transcript via backend (`youtube-transcript-api`) with CORS scrape fallback
 - [x] NotebookLM one-click (video URL or article URL copied to clipboard)
 - [x] Obsidian vault integration (File System Access API, no plugin needed)
 - [x] Podcasting 2.0 transcript links (`<podcast:transcript>`)
-- [x] Books tab — Google Books API, English-only, deduplicated by title
+- [x] Books tab — Open Library API, English-only, deduplicated by title
 - [x] X/Twitter via free Nitter instances (accepts @username, no paid subscription needed)
 - [x] Person-level topic tags with TOPICS filter bar (rename/remove globally)
-- [x] Website field on person/source profiles
+- [x] Website + Wikipedia Page + Transcripts URL fields on profiles
+- [x] Wikipedia auto-fill — avatar, description, and Wikipedia URL fetched on Search
 - [x] Stale-while-revalidate background refresh — feeds older than 6 hours auto-refresh on page load and card open, with pulsing badge indicator
 - [x] Role-based Add Person flow — role checkboxes (Podcaster / YouTuber / Blogger / Writer) drive parallel auto-search; top result auto-selected with inline paste override per role
+- [x] Concurrent refresh protection — per-person sequential queue prevents race conditions on double-refresh
 
 ### Planned
+- [ ] Export / import persons list as JSON (backup and cross-profile transfer)
 - [ ] Auto-refresh on a fixed interval (e.g. every N minutes) with configurable timer and visual countdown
 - [ ] Show more than 4 entries per card (expand / paginate)
 - [ ] Keyword search across all entry titles and descriptions
-- [ ] Export / import persons list as JSON backup
 - [ ] Newsletters as a distinct platform (Substack, Beehiiv, Ghost)
 - [ ] arXiv / papers platform (author RSS feeds)
 - [ ] GitHub activity platform (user event feed)
 - [ ] Weekly AI digest across all tracked people
 - [ ] Browser push notifications for new content
 - [ ] Smart collections (saved filter combos)
-- [ ] Person profile page (full-screen view with all entries and books)
 - [ ] Readwise / Notion integration for notes export
 - [ ] Self-hosted backend (removes CORS proxy dependency, enables background polling)
 - [ ] Mobile PWA (service worker + manifest)

@@ -26,11 +26,13 @@ Pulse/
 ## Technical stack
 
 - **Vanilla HTML/CSS/JS** — no framework, no bundler, no npm
-- **localStorage** — all persistence (persons, seen entry IDs, notes, tags, config)
+- **localStorage** — all persistence (persons, seen entry IDs, notes, tags, config); **isolated per Chrome profile** — different accounts cannot share data
 - **IndexedDB** — full episode history (iTunes) and Obsidian vault handle
 - **CORS proxy chain** — corsproxy.io → allorigins.win → codetabs.com (tried in order)
 - **Google Fonts** — Playfair Display, JetBrains Mono, Libre Baskerville
 - **No API keys required for core features** — YouTube/podcast RSS is public, X/Twitter uses free Nitter instances, Books uses Google Books API (free)
+- **Flask backend** (`backend/server.py`, port 5001) — optional; enables reliable YouTube transcript fetching via `youtube-transcript-api`
+- **Shared utilities** — `Main Rules/utilities/js/` functions inlined in `<script>` block: `sleep`, `withTimeout`, `sequential`, `CircularBuffer`, `memoizeWithTTLAsync`, `toError`, `errorMessage`, `isAbortError`
 
 ---
 
@@ -52,6 +54,13 @@ Pulse/
     twitter:   string,        // @username, x.com/user, or rss.app RSS URL
     blog:      string,        // full RSS URL (Substack, personal blog, etc.)
     books:     string,        // optional Google Books search query override
+  },
+  feedsEnabled: {             // per-feed enable/disable toggle (all default true; missing key = enabled)
+    podcast:   boolean,
+    youtube:   boolean,
+    twitter:   boolean,
+    blog:      boolean,
+    books:     boolean,
   },
   tags:        string[],      // person-level topics for TOPICS filter bar
   roles:       string[],      // UI-only hint: ['podcaster','youtuber','blogger','writer'] — set at Add Person time
@@ -99,11 +108,15 @@ Pulse/
 | `loadState()` | Load persons + seenIds from localStorage, seed with DEMO_PERSONS if empty |
 | `saveState()` | Persist persons + seenIds to localStorage |
 | `ensureFresh(person)` | Stale-while-revalidate: no-op if fresh (<6h), background refresh if stale, blocking fetch if never fetched |
-| `fetchPerson(person)` | Fetch all feeds in parallel (30s hard cap), update entries |
+| `fetchPerson(person)` | Sequential queue wrapper around `_fetchPersonCore` — prevents race conditions on double-refresh |
+| `_fetchPersonCore(person)` | Fetch all enabled feeds in parallel (30s hard cap via `withTimeout`), update entries via `CircularBuffer` |
 | `fetchRSS(url, platform, personId)` | Fetch one RSS URL via CORS proxy chain, parse XML, return `{entries, error}` |
 | `fetchBooks(query, personId)` | Query Google Books API, return English-only deduplicated Entry[] |
 | `fetchTwitterHandle(handle, platform, personId)` | Try each Nitter instance, return entries from first working one |
 | `refreshAll()` | Call fetchPerson() for all persons in parallel |
+| `feedOn(key)` | Returns `true` if a feed is enabled; `person.feedsEnabled?.[key] !== false` (backward-compatible) |
+| `toggleFeedEnabled(personId, feedKey, enabled)` | Toggle a feed on/off; saves state immediately, updates dot color without full re-render |
+| `_checkBackend()` | Ping `localhost:5001/api/health`; sets `_backendOnline` flag used by transcript loader |
 | `renderAllCards()` | Re-render People grid, applying activeTag + currentFilter + searchQuery |
 | `renderPersonCard(person, prepend, delay)` | Render or re-render a single person card |
 | `renderTimeline()` | Render the Timeline view (all entries, date-grouped) |
@@ -124,7 +137,7 @@ Pulse/
 | `selectRoleResult(role, idx)` | Switch selected result for a role; updates `_roleSelections[role]` and toggles `.selected` CSS |
 | `toggleRole(role)` | Toggle a role chip checked state; updates `_formRoles` Set and calls `_updateSearchBtn()` |
 | `_updateSearchBtn()` | Enable/disable Search button: source mode requires name only; person mode requires name + at least one role |
-| `resolveYouTubeChannelId(raw)` | Resolve @handle/URL/username to UC… channel ID |
+| `resolveYouTubeChannelId(raw)` | Resolve @handle/URL/username to UC… channel ID — Step 0 tries `forHandle` RSS endpoint before legacy methods |
 | `_findSourceRSS(name)` | Auto-discover RSS feed for a publication by name |
 | `_looksLikeRssUrl(url)` | Returns true for RSS URLs AND bare @username Twitter handles |
 | `_extractTwitterHandle(val)` | Extract bare username from @user / x.com/user; null for full URLs |
@@ -188,25 +201,64 @@ Runtime state (cleared on panel open/close):
 
 ---
 
+## Feed status dots (in Edit panel)
+
+Each feed row in the Edit / Detail panel shows a colour-coded status dot:
+
+| Colour | Meaning |
+|--------|---------|
+| 🟢 Green | Feed fetched successfully and has entries |
+| 🔴 Red | Feed was attempted but failed (in `fetchErrors`) |
+| 🟡 Yellow | Feed was fetched but returned zero entries |
+| ⚫ Grey | Feed never fetched, or feed is disabled |
+
+The Books dot uses `person.name` as fallback query when the books field is blank (so the dot shows even without an explicit query override).
+
+Each feed also has an enable/disable toggle checkbox. Disabling a feed skips it on the next refresh without removing the URL. The `feedOn(key)` helper checks `person.feedsEnabled?.[key] !== false` so existing persons without `feedsEnabled` default to all-enabled.
+
+---
+
+## Backend (`backend/server.py`)
+
+Optional Flask server on port 5001. Start with:
+```bash
+cd backend && python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+python server.py
+```
+
+Endpoints:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/health` | Health check; returns `{"status":"ok"}` |
+| `GET /api/transcript/<video_id>` | Fetch YouTube transcript via `youtube-transcript-api`; returns `{transcript, segments, auto, language}` |
+| `POST /api/notebooklm/ask` | Query a NotebookLM notebook via the notebooklm-skill subprocess |
+
+The frontend checks `_backendOnline` (set by `_checkBackend()` on page load) and routes `loadYouTubeTranscript()` through the backend when available, falling back to CORS proxy scrape.
+
+---
+
 ## Known limitations / issues
 
 1. **CORS proxy reliability** — three public CORS proxies tried in sequence. All are free services and can be slow/rate-limited. Each proxy has a 7s timeout; the entire fetchPerson call has a 30s hard cap.
 2. **X/Twitter via Nitter** — free but fragile. Nitter instances come and go as X blocks them. The `NITTER_INSTANCES` array at the top of the JS can be updated when instances go down.
-3. **YouTube channel ID** — stored as `UC…` ID. The form accepts @handles and URLs and auto-resolves on save. If the stored value is not a valid `UC…` ID, YouTube fetching is silently skipped.
+3. **YouTube channel ID** — stored as `UC…` ID. The form accepts @handles and URLs and auto-resolves on save via the `forHandle` RSS endpoint (Step 0) then legacy methods. If the stored value is not a valid `UC…` ID, YouTube fetching is silently skipped.
 4. **Google Books accuracy** — `langRestrict=en` is requested and results are client-filtered to `language === 'en'`, but Google Books metadata is imperfect and some non-English editions may still appear.
 5. **Background refresh (TTL-based)** — `ensureFresh()` fires automatically on page load (staggered 600ms apart) and on `openPersonDetail`. Feeds older than 6 hours (`FEED_TTL_MS`) are refreshed in the background; a pulsing dot badge indicates progress. Manual refresh (↻ / Refresh All) always fetches immediately regardless of age.
-6. **Entry limit** — Each person stores max 20 entries. Cards show only the top 4.
+6. **Entry limit** — Each person stores max 20 non-book entries (CircularBuffer capacity 20) + 15 book entries. Cards show only the top 4.
+7. **localStorage profile isolation** — localStorage is scoped to the browser profile (Chrome account). Opening Pulse in a different Chrome profile shows an empty persons list. Use the same profile consistently; export/import (planned) will allow transfer.
 
 ---
 
 ## Roadmap (in priority order)
 
-1. **Auto-refresh on interval** — `setInterval` every N minutes, configurable, with a visual countdown (TTL-based background refresh on load/open is already done)
-2. **Show more entries** — Expand button on cards to see all 20 (or paginate)
-3. **Export/import** — JSON dump of persons list for backup and transfer
+1. **Export/import** — JSON dump of persons list for backup and cross-profile transfer (high priority; localStorage is profile-isolated)
+2. **Auto-refresh on interval** — `setInterval` every N minutes, configurable, with a visual countdown (TTL-based background refresh on load/open is already done)
+3. **Show more entries** — Expand button on cards to see all 20 (or paginate)
 4. **Browser notifications** — `Notification API` for new items in background
 5. **AI digest** — Weekly summary of each person's activity using Claude API (claude-sonnet-4-6)
-6. **Self-hosted backend** — Tiny Node/Deno/Python server for:
+6. **Self-hosted backend** — Extend `backend/server.py` for:
    - Removing CORS proxy dependency
    - Background polling (cron)
    - Push notifications via WebSockets
@@ -226,3 +278,6 @@ Runtime state (cleared on panel open/close):
 - When adding features that require API keys, store them in localStorage under `pw-config` (never hardcode)
 - The accent color `--accent` (#e8c84a) is the gold used throughout — keep it consistent
 - `person.tags` is for person-level TOPICS filtering only; `entryTags` is for per-episode annotations — do not mix them
+- **Use shared utilities from `Main Rules/utilities/js/`** — inline them in the utilities block in `<script>`. Do not re-implement `sleep`, `withTimeout`, `sequential`, `CircularBuffer`, `memoizeWithTTLAsync`, `toError`, `errorMessage`, `isAbortError`
+- **Concurrent refresh protection** — always use `fetchPerson()` (the `sequential` wrapper), never call `_fetchPersonCore()` directly from outside
+- **Feed enable/disable** — always use `feedOn(key)` helper to check if a feed should be fetched; never read `feedsEnabled` directly
