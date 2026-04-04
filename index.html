@@ -2873,7 +2873,7 @@ function renderRoleResults(query) {
                  onerror="this.style.display='none'">`
             : ''}
           <div class="role-book-title">${escHtml(r.label)}</div>
-          <div class="role-result-sub">${r.sub || ''}</div>
+          <div class="role-result-sub">${escHtml(r.sub || '')}</div>
         </div>`;
       });
       sectionsHtml += `</div>`;
