@@ -2410,10 +2410,21 @@ function toggleAddPanel() {
   const panel = document.getElementById('addPanel');
   panel.classList.toggle('open');
   if (panel.classList.contains('open')) {
-    document.getElementById('suggestArea').innerHTML = '';
-    _suggestions = [];
+    document.getElementById('suggestArea').innerHTML  = '';
+    document.getElementById('roleResultsArea').innerHTML = '';
+    _suggestions    = [];
+    _formRoles      = new Set();
+    _roleResults    = {};
+    _roleSelections = {};
+    // Reset role chip visual state
+    ['podcaster','youtuber','blogger','writer'].forEach(r => {
+      document.getElementById('role-' + r)?.classList.remove('checked');
+    });
     _formTags = []; renderFormTagChips();
-    setAddType('person'); // always reset to person mode
+    // Reset Add button label
+    const addBtn = document.getElementById('addPersonBtn');
+    if (addBtn) addBtn.textContent = 'Add Person';
+    setAddType('person');
     document.getElementById('f-name').focus();
   }
 }
@@ -2435,9 +2446,34 @@ function setAddType(type) {
 }
 
 // ── AUTO-DISCOVER BY NAME ──
-let _suggestions = [];
+let _suggestions  = [];
+let _formRoles    = new Set();   // which role chips are checked
+let _roleResults  = {};          // { podcaster: [...], youtuber: [...], writer: [...] }
+let _roleSelections = {};        // { podcaster: 0, youtuber: 0, writer: 'query-string' }
 
 // ── helpers ──
+
+function toggleRole(role) {
+  if (_formRoles.has(role)) {
+    _formRoles.delete(role);
+  } else {
+    _formRoles.add(role);
+  }
+  const chip = document.getElementById('role-' + role);
+  if (chip) chip.classList.toggle('checked', _formRoles.has(role));
+  _updateSearchBtn();
+}
+
+function _updateSearchBtn() {
+  const name = (document.getElementById('f-name')?.value || '').trim();
+  const btn  = document.getElementById('searchBtn');
+  if (!btn) return;
+  if (_addType === 'source') {
+    btn.disabled = !name;
+  } else {
+    btn.disabled = !name || _formRoles.size === 0;
+  }
+}
 
 async function _fetchHtml(url) {
   let html = null;
