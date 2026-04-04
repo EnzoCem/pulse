@@ -2435,14 +2435,34 @@ function setAddType(type) {
   document.getElementById('typeSourceBtn').classList.toggle('active', type === 'source');
 
   const isSource = type === 'source';
-  document.getElementById('addPanelTitle').textContent   = isSource ? '+ Track a Publication or Source' : '+ Track a New Person';
-  document.getElementById('f-name-label').textContent    = isSource ? 'Source Name *' : 'Name *';
-  document.getElementById('f-name').placeholder          = isSource ? 'e.g. Big Think, Quanta Magazine, Aeon' : 'e.g. Michael Pollan — press Search to auto-fill';
-  document.getElementById('f-podcast-label').textContent = isSource ? 'Main RSS Feed' : 'Podcast RSS';
-  document.getElementById('f-podcast-icon').textContent  = isSource ? '📰' : '🎙';
-  // Clear suggestions when switching type
-  document.getElementById('suggestArea').innerHTML = '';
-  _suggestions = [];
+  document.getElementById('addPanelTitle').textContent = isSource ? '+ Track a Publication or Source' : '+ Track a New Person';
+  document.getElementById('f-name-label').textContent  = isSource ? 'Source Name *' : 'Name *';
+  document.getElementById('f-name').placeholder        = isSource
+    ? 'e.g. Big Think, Quanta Magazine, Aeon'
+    : 'e.g. Tim Ferriss';
+
+  // Show/hide role picker vs feed inputs
+  const roleWrap   = document.getElementById('rolePickerWrap');
+  const feedInputs = document.getElementById('feedInputsSection');
+  if (roleWrap)   roleWrap.style.display   = isSource ? 'none' : '';
+  if (feedInputs) feedInputs.style.display = isSource ? ''     : 'none';
+
+  // Source mode labels on the feed section
+  if (isSource) {
+    const pl = document.getElementById('f-podcast-label');
+    const pi = document.getElementById('f-podcast-icon');
+    if (pl) pl.textContent = 'Main RSS Feed';
+    if (pi) pi.textContent = '📰';
+  }
+
+  // Clear results areas when switching
+  document.getElementById('suggestArea').innerHTML     = '';
+  document.getElementById('roleResultsArea').innerHTML = '';
+  _suggestions    = [];
+  _roleResults    = {};
+  _roleSelections = {};
+
+  _updateSearchBtn();
 }
 
 // ── AUTO-DISCOVER BY NAME ──
