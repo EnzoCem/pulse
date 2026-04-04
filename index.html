@@ -2351,15 +2351,17 @@ function renderPersonDetail() {
     const hasEntries = (person.entries || []).some(e => e.platform === f.key);
     const fetched    = !!person.lastUpdated;
     const notRss     = val && f.key === 'twitter' && !_looksLikeRssUrl(val);
+    // Books always has an effective value — falls back to person name when field is blank
+    const effectiveVal = f.key === 'books' ? (val || person.name) : val;
 
     // Status dot: green=OK, red=failed, yellow=empty, grey=never fetched, none=no URL
     let dotClass = 'dot-none', dotTitle = '';
-    if (val && enabled) {
+    if (effectiveVal && enabled) {
       if (!fetched)        { dotClass = 'dot-grey';   dotTitle = 'Not yet fetched'; }
       else if (failed)     { dotClass = 'dot-red';    dotTitle = 'Last fetch failed — check URL'; }
       else if (hasEntries) { dotClass = 'dot-green';  dotTitle = 'Feed OK'; }
       else                 { dotClass = 'dot-yellow'; dotTitle = 'Fetched OK but returned no entries'; }
-    } else if (val && !enabled) {
+    } else if (effectiveVal && !enabled) {
       dotClass = 'dot-grey'; dotTitle = 'Feed disabled';
     }
 
