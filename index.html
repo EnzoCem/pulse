@@ -2926,22 +2926,59 @@ async function addPerson() {
   const name = document.getElementById('f-name').value.trim();
   if (!name) { alert('Name is required'); return; }
 
-  // Resolve YouTube input (handle, URL, or raw ID) → bare channel ID
-  const ytRaw = document.getElementById('f-youtube').value.trim();
-  const addBtn = document.querySelector('.btn-primary[onclick="addPerson()"]');
-  let ytId = '';
-  if (ytRaw) {
-    if (addBtn) { addBtn.textContent = 'Resolving…'; addBtn.disabled = true; }
-    ytId = await resolveYouTubeChannelId(ytRaw);
-    if (addBtn) { addBtn.textContent = 'Add Person'; addBtn.disabled = false; }
+  // Helper: read an inline override input (may not exist in DOM if role not checked)
+  const getOverride = id => (document.getElementById(id)?.value || '').trim();
+  const addBtn = document.getElementById('addPersonBtn');
+
+  let podcastUrl  = '';
+  let ytId        = '';
+  let blogUrl     = '';
+  let booksQuery  = '';
+  let itunesId    = null;
+
+  if (_addType === 'person') {
+    // ── PERSON mode: read from role selections + inline overrides ──
+
+    // Podcast
+    const overridePodcast = getOverride('override-podcast');
+    const selPodcast = (_roleResults.podcaster || [])[_roleSelections.podcaster ?? -1];
+    podcastUrl = overridePodcast || selPodcast?.podcastUrl || '';
+    itunesId   = selPodcast?.itunesId || null;
+
+    // YouTube — override may be a handle/URL, needs resolution
+    const overrideYoutube = getOverride('override-youtube');
+    const selYt = (_roleResults.youtuber || [])[_roleSelections.youtuber ?? -1];
+    if (overrideYoutube) {
+      if (addBtn) { addBtn.textContent = 'Resolving…'; addBtn.disabled = true; }
+      ytId = await resolveYouTubeChannelId(overrideYoutube);
+      if (addBtn) { addBtn.textContent = `✓ Add ${name}`; addBtn.disabled = false; }
+    } else {
+      ytId = selYt?.youtubeId || '';
+    }
+
+    // Blog
+    blogUrl = getOverride('override-blog');
+
+    // Books: override URL wins, else use stored query
+    booksQuery = getOverride('override-books') || _roleSelections.writer || name;
+
+  } else {
+    // ── SOURCE mode: read from visible feed input fields (unchanged) ──
+    const ytRaw     = document.getElementById('f-youtube').value.trim();
+    podcastUrl      = document.getElementById('f-podcast').value.trim();
+    blogUrl         = document.getElementById('f-blog').value.trim();
+    booksQuery      = document.getElementById('f-books')?.value.trim() || '';
+    const matchedSug = _suggestions.find(s => s.podcastUrl && s.podcastUrl === podcastUrl);
+    itunesId        = matchedSug?.itunesId || null;
+    if (ytRaw) {
+      if (addBtn) { addBtn.textContent = 'Resolving…'; addBtn.disabled = true; }
+      ytId = await resolveYouTubeChannelId(ytRaw);
+      if (addBtn) { addBtn.textContent = 'Add Person'; addBtn.disabled = false; }
+    }
   }
 
-  // Pick itunesId from whichever suggestion was applied (matched by podcast URL)
-  const podcastUrl = document.getElementById('f-podcast').value.trim();
-  const matchedSug = _suggestions.find(s => s.podcastUrl && s.podcastUrl === podcastUrl);
-
   // Auto-derive website from podcast RSS URL if not filled in
-  const websiteInput = document.getElementById('f-website').value.trim();
+  const websiteInput = document.getElementById('f-website')?.value.trim() || '';
   const derivedWebsite = websiteInput || (() => {
     try { const u = new URL(podcastUrl); return u.origin; } catch(_) { return ''; }
   })();
@@ -2949,18 +2986,19 @@ async function addPerson() {
   const person = {
     id:   name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now(),
     name,
-    type:    _addType,   // 'person' | 'source'
+    type:    _addType,
     desc:    document.getElementById('f-desc').value.trim(),
     website: derivedWebsite,
     avatar:  document.getElementById('f-avatar').value.trim(),
     feeds: {
       podcast: podcastUrl,
       youtube: ytId,
-      twitter: document.getElementById('f-twitter').value.trim(),
-      blog:    document.getElementById('f-blog').value.trim(),
-      books:   document.getElementById('f-books')?.value.trim() || '',
+      twitter: _addType === 'source' ? (document.getElementById('f-twitter')?.value.trim() || '') : '',
+      blog:    blogUrl,
+      books:   booksQuery,
     },
-    itunesId: matchedSug?.itunesId || null,
+    itunesId: itunesId,
+    roles:   _addType === 'person' ? [..._formRoles] : [],
     entries: [], lastUpdated: null, loading: false,
     tags: [..._formTags],
   };
@@ -2968,10 +3006,20 @@ async function addPerson() {
   persons.unshift(person);
   saveState();
   ['f-name','f-desc','f-website','f-avatar','f-podcast','f-youtube','f-twitter','f-blog','f-books'].forEach(id => {
-    document.getElementById(id).value = '';
+    const el = document.getElementById(id);
+    if (el) el.value = '';
   });
-  document.getElementById('suggestArea').innerHTML = '';
-  _suggestions = [];
+  document.getElementById('suggestArea').innerHTML     = '';
+  document.getElementById('roleResultsArea').innerHTML = '';
+  _suggestions    = [];
+  _formRoles      = new Set();
+  _roleResults    = {};
+  _roleSelections = {};
+  ['podcaster','youtuber','blogger','writer'].forEach(r => {
+    document.getElementById('role-' + r)?.classList.remove('checked');
+  });
+  const addBtn2 = document.getElementById('addPersonBtn');
+  if (addBtn2) addBtn2.textContent = 'Add Person';
   _formTags = []; renderFormTagChips();
   renderTagFilterRow();
   toggleAddPanel();
