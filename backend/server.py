@@ -9,7 +9,8 @@ import subprocess
 from flask import Flask, jsonify, request, make_response
 
 try:
-    from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
+    from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled, VideoUnavailable
+    _yt_api = YouTubeTranscriptApi()   # v1.0+ uses instances, not class methods
     YT_TRANSCRIPT_AVAILABLE = True
 except ImportError:
     YT_TRANSCRIPT_AVAILABLE = False
@@ -68,18 +69,19 @@ def get_transcript(video_id):
         return jsonify({'error': 'Invalid video ID'}), 400
 
     try:
-        # Prefer manually created English captions; fall back to auto-generated
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        # List available transcripts to detect auto vs manual and pick best English one
+        transcript_list = _yt_api.list(video_id)
         try:
             transcript = transcript_list.find_manually_created_transcript(['en', 'en-US', 'en-GB'])
+            is_auto = False
         except NoTranscriptFound:
             transcript = transcript_list.find_generated_transcript(['en', 'en-US', 'en-GB'])
+            is_auto = True
 
-        segments  = transcript.fetch()
-        is_auto   = transcript.is_generated
         lang_code = transcript.language_code
+        segments  = transcript.fetch()   # returns FetchedTranscript (iterable of FetchedTranscriptSnippet)
 
-        # Join segments into paragraph chunks (~15 segments ≈ 45 seconds each)
+        # Join into paragraph chunks (~15 segments ≈ 45 seconds each)
         texts = [s.text.strip() for s in segments if s.text.strip()]
         paras = [' '.join(texts[i:i+15]) for i in range(0, len(texts), 15)]
         full_text = '\n\n'.join(paras)
@@ -91,7 +93,7 @@ def get_transcript(video_id):
             'language':   lang_code,
         })
 
-    except TranscriptsDisabled:
+    except (TranscriptsDisabled, VideoUnavailable):
         return jsonify({'error': 'NO_CAPTIONS'}), 404
     except NoTranscriptFound:
         return jsonify({'error': 'NO_CAPTIONS'}), 404
