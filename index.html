@@ -2701,13 +2701,13 @@ async function searchPersonByName() {
   const query = document.getElementById('f-name').value.trim();
   if (!query) { document.getElementById('f-name').focus(); return; }
 
-  const btn  = document.getElementById('searchBtn');
-  const area = document.getElementById('suggestArea');
+  const btn = document.getElementById('searchBtn');
   btn.disabled = true; btn.textContent = 'Searching…';
-  _suggestions = [];
 
-  // ── SOURCE mode: skip iTunes, use RSS autodiscovery + YouTube search ──
+  // ── SOURCE mode: unchanged behavior ──
   if (_addType === 'source') {
+    const area = document.getElementById('suggestArea');
+    _suggestions = [];
     area.innerHTML = '<div class="suggest-status">Searching YouTube channel and RSS feed…</div>';
     const [ytId, rssUrl] = await Promise.all([
       _findYouTube(query, ''),
@@ -2726,110 +2726,73 @@ async function searchPersonByName() {
     return;
   }
 
-  area.innerHTML = '<div class="suggest-status">Searching podcasts, YouTube, blogs…</div>';
+  // ── PERSON mode: role-based parallel search ──
+  _roleResults    = {};
+  _roleSelections = {};
+  const resultsArea = document.getElementById('roleResultsArea');
+  resultsArea.innerHTML = '<div class="suggest-status">Searching…</div>';
 
-  // ── PERSON mode: iTunes first (podcast source of truth), then YouTube + blog in parallel ──
-  // If the query is an Apple Podcasts URL (e.g. https://podcasts.apple.com/.../id1803050676),
-  // extract the numeric ID and use the lookup API directly instead of text search.
-  const applePodcastIdMatch = query.match(/[?&/]id(\d{7,12})(?:[/?&]|$)/i)
-    || query.match(/podcasts\.apple\.com.*\/id(\d{7,12})/i);
-  const itunesData = await (applePodcastIdMatch
-    ? fetch(
-        `https://itunes.apple.com/lookup?id=${applePodcastIdMatch[1]}&entity=podcast`,
-        { signal: AbortSignal.timeout(8000) }
-      ).then(r => r.json()).catch(() => ({ results: [] }))
-    : fetch(
-        `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=podcast&entity=podcast&limit=6`,
-        { signal: AbortSignal.timeout(8000) }
-      ).then(r => r.json()).catch(() => ({ results: [] }))
-  );
+  // Build role-scoped API calls
+  const tasks = [];
 
-  // Use the top iTunes podcast URL to prevent _findBlog returning the same domain
-  const topPodcastUrl = itunesData.results.find(r => r.feedUrl)?.feedUrl || '';
-
-  const topPodcastName = itunesData.results.find(r => r.collectionName)?.collectionName || '';
-  // When the user pasted an Apple Podcasts URL, use the resolved podcast/artist name
-  // for YouTube & blog discovery (and later scoring) instead of the raw URL string.
-  const effectiveQuery = applePodcastIdMatch
-    ? (itunesData.results[0]?.artistName || itunesData.results[0]?.collectionName || query)
-    : query;
-  const [ytId, blogUrl] = await Promise.all([
-    _findYouTube(effectiveQuery, topPodcastName),
-    _findBlog(effectiveQuery, topPodcastUrl),
-  ]);
-
-  itunesData.results.forEach(r => {
-    if (!r.feedUrl) return;
-    const art = (r.artworkUrl600 || r.artworkUrl100 || '').replace('100x100bb', '600x600bb');
-    _suggestions.push({
-      name:        r.artistName || r.collectionName,
-      desc:        r.primaryGenreName || '',
-      avatar:      art,
-      podcastUrl:  r.feedUrl,
-      podcastName: r.collectionName,
-      trackCount:  r.trackCount,
-      itunesId:    r.collectionId || null,
-      youtubeId:   null,
-      blogUrl:     null,
-    });
-  });
-
-  // Attach YouTube + blog to best matching suggestion (or create a stub)
-  if (ytId || blogUrl) {
-    let best = _suggestions.findIndex(s => _nameScore(effectiveQuery, s.name) >= 1);
-    if (best < 0 && _suggestions.length > 0) best = 0;
-    if (best >= 0) {
-      if (ytId)    _suggestions[best].youtubeId = ytId;
-      if (blogUrl) _suggestions[best].blogUrl   = blogUrl;
-    } else {
-      _suggestions.push({ name: effectiveQuery, desc: '', avatar: '', podcastUrl: '',
-                          podcastName: '', trackCount: null, youtubeId: ytId, blogUrl });
-    }
+  if (_formRoles.has('podcaster')) {
+    tasks.push((async () => {
+      const applePodcastIdMatch = query.match(/[?&/]id(\d{7,12})(?:[/?&]|$)/i)
+        || query.match(/podcasts\.apple\.com.*\/id(\d{7,12})/i);
+      const data = await (applePodcastIdMatch
+        ? fetch(
+            `https://itunes.apple.com/lookup?id=${applePodcastIdMatch[1]}&entity=podcast`,
+            { signal: AbortSignal.timeout(8000) }
+          ).then(r => r.json()).catch(() => ({ results: [] }))
+        : fetch(
+            `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=podcast&entity=podcast&limit=4`,
+            { signal: AbortSignal.timeout(8000) }
+          ).then(r => r.json()).catch(() => ({ results: [] }))
+      );
+      _roleResults.podcaster = (data.results || [])
+        .filter(r => r.feedUrl)
+        .slice(0, 3)
+        .map(r => ({
+          label:      r.collectionName || r.artistName || query,
+          sub:        `${r.trackCount || '?'} episodes · iTunes`,
+          podcastUrl: r.feedUrl,
+          itunesId:   r.collectionId || null,
+          avatar:     (r.artworkUrl600 || r.artworkUrl100 || '').replace('100x100bb', '600x600bb'),
+        }));
+    })());
   }
+
+  if (_formRoles.has('youtuber')) {
+    tasks.push((async () => {
+      const ytId = await _findYouTube(query, '');
+      _roleResults.youtuber = ytId
+        ? [{ label: query, sub: ytId, youtubeId: ytId }]
+        : [];
+    })());
+  }
+
+  if (_formRoles.has('writer')) {
+    tasks.push((async () => {
+      const books = await fetchBooks(query, '__preview__');
+      _roleResults.writer = books.slice(0, 6).map(b => ({
+        label:     b.title,
+        sub:       b.date ? (new Date(b.date).getFullYear() || '') : '',
+        booksQuery: query,
+        link:      b.link,
+        thumbnail: b.thumbnail,
+      }));
+    })());
+  }
+
+  // Blogger has no auto-search — paste field is shown immediately
+  if (_formRoles.has('blogger')) {
+    _roleResults.blogger = [];
+  }
+
+  await Promise.allSettled(tasks);
 
   btn.disabled = false; btn.textContent = '🔍 Search';
-
-  if (_suggestions.length === 0) {
-    area.innerHTML = `<div class="suggest-status">No results found — fill in the fields manually below.</div>`;
-    return;
-  }
-
-  // Auto-apply best match if name score ≥ 2 (close match), otherwise let user pick.
-  // When query was an Apple Podcasts URL, the lookup is exact — always auto-apply.
-  const bestIdx = _suggestions.reduce((bi, s, i) =>
-    _nameScore(effectiveQuery, s.name) > _nameScore(effectiveQuery, _suggestions[bi].name) ? i : bi, 0);
-  const autoApplied = applePodcastIdMatch || _nameScore(effectiveQuery, _suggestions[bestIdx].name) >= 2;
-  if (autoApplied) applySuggestion(bestIdx, true);
-
-  // Render suggestion list (as "other options" if auto-applied, full list if not)
-  const label = autoApplied
-    ? `<div class="suggest-status" style="text-align:left;padding:0 0 6px">✓ Auto-filled — or pick a different match:</div>`
-    : `<div class="suggest-status" style="text-align:left;padding:0 0 6px">Select the best match:</div>`;
-
-  const cardsHtml = _suggestions.map((s, i) => {
-    const artHtml = s.avatar
-      ? `<img class="suggest-art" src="${escHtml(s.avatar)}"
-             onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'suggest-art-ph',textContent:'🎙'}))">`
-      : `<div class="suggest-art-ph">🎙</div>`;
-    const tags = [
-      s.podcastUrl ? `<span class="stag podcast">podcast ✓</span>` : '',
-      s.youtubeId  ? `<span class="stag youtube">youtube ✓</span>`  : '',
-      s.blogUrl    ? `<span class="stag blog">blog ✓</span>`        : '',
-    ].join('');
-    const sub = s.podcastName
-      ? `${s.podcastName}${s.trackCount ? ' · ' + s.trackCount + ' eps' : ''}`
-      : (s.youtubeId ? 'YouTube channel found' : '');
-    return `
-      <div class="suggest-card${i === bestIdx && autoApplied ? ' applied' : ''}" id="scard-${i}" onclick="applySuggestion(${i})">
-        ${artHtml}
-        <div class="suggest-info">
-          <div class="suggest-name">${escHtml(s.name)}</div>
-          ${sub ? `<div class="suggest-sub">${escHtml(sub)}</div>` : ''}
-          <div class="suggest-tags">${tags}</div>
-        </div>
-      </div>`;
-  }).join('');
-  area.innerHTML = label + `<div class="suggest-list">${cardsHtml}</div>`;
+  renderRoleResults(query);
 }
 
 function applySuggestion(idx, silent = false) {
