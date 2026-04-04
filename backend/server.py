@@ -8,6 +8,12 @@ import re
 import subprocess
 from flask import Flask, jsonify, request, make_response
 
+try:
+    from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
+    YT_TRANSCRIPT_AVAILABLE = True
+except ImportError:
+    YT_TRANSCRIPT_AVAILABLE = False
+
 # ── Configuration ──────────────────────────────────────────────────────────────
 DEFAULT_SKILL_PATH = os.path.expanduser(
     '~/Documents/Cem Code/PK App/.claude/skills/notebooklm'
@@ -50,6 +56,48 @@ def index():
 def health():
     skill_ok = os.path.isfile(os.path.join(SKILL_PATH, 'scripts', 'run.py'))
     return jsonify({'status': 'ok', 'notebooklm_skill': skill_ok})
+
+# ── YouTube Transcript ────────────────────────────────────────────────────────
+@app.route('/api/transcript/<video_id>', methods=['GET'])
+def get_transcript(video_id):
+    """Fetch a YouTube transcript using youtube-transcript-api."""
+    if not YT_TRANSCRIPT_AVAILABLE:
+        return jsonify({'error': 'youtube-transcript-api not installed. Run: pip install youtube-transcript-api'}), 503
+
+    if not video_id or not re.match(r'^[a-zA-Z0-9_-]{11}$', video_id):
+        return jsonify({'error': 'Invalid video ID'}), 400
+
+    try:
+        # Prefer manually created English captions; fall back to auto-generated
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        try:
+            transcript = transcript_list.find_manually_created_transcript(['en', 'en-US', 'en-GB'])
+        except NoTranscriptFound:
+            transcript = transcript_list.find_generated_transcript(['en', 'en-US', 'en-GB'])
+
+        segments  = transcript.fetch()
+        is_auto   = transcript.is_generated
+        lang_code = transcript.language_code
+
+        # Join segments into paragraph chunks (~15 segments ≈ 45 seconds each)
+        texts = [s.text.strip() for s in segments if s.text.strip()]
+        paras = [' '.join(texts[i:i+15]) for i in range(0, len(texts), 15)]
+        full_text = '\n\n'.join(paras)
+
+        return jsonify({
+            'transcript': full_text,
+            'segments':   len(texts),
+            'auto':       is_auto,
+            'language':   lang_code,
+        })
+
+    except TranscriptsDisabled:
+        return jsonify({'error': 'NO_CAPTIONS'}), 404
+    except NoTranscriptFound:
+        return jsonify({'error': 'NO_CAPTIONS'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 # ── NotebookLM Q&A ─────────────────────────────────────────────────────────────
 @app.route('/api/notebooklm/ask', methods=['POST'])
