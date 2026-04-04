@@ -2638,27 +2638,32 @@ async function resolveYouTubeChannelId(raw) {
   const handle = handleMatch ? handleMatch[1] : raw.replace(/^@/, '');
 
   // Step 1: try the legacy ?user= RSS endpoint (still works for many channels)
-  try {
-    const rssUrl = `https://www.youtube.com/feeds/videos.xml?user=${encodeURIComponent(handle)}`;
-    const resp = await fetch(CORS_FALLBACK2 + encodeURIComponent(rssUrl), { signal: AbortSignal.timeout(6000) });
-    if (resp.ok) {
-      const text = await resp.text();
-      // The feed contains <id>yt:channel:UCxxxxxx</id> — m[1] is already the full UC… ID
-      const m = text.match(/<id>yt:channel:(UC[a-zA-Z0-9_-]{21,22})<\/id>/);
-      if (m) return m[1];
-    }
-  } catch(e) { /* silent */ }
+  // Try all three CORS proxies in sequence
+  const rssUrl  = `https://www.youtube.com/feeds/videos.xml?user=${encodeURIComponent(handle)}`;
+  for (const proxy of [CORS_FALLBACK2, CORS_PRIMARY, CORS_FALLBACK]) {
+    try {
+      const resp = await fetch(proxy + encodeURIComponent(rssUrl), { signal: AbortSignal.timeout(6000) });
+      if (resp.ok) {
+        const text = await resp.text();
+        const m = text.match(/<id>yt:channel:(UC[a-zA-Z0-9_-]{21,22})<\/id>/);
+        if (m) return m[1];
+      }
+    } catch(e) { /* try next proxy */ }
+  }
 
-  // Step 2: fetch the @handle channel page and extract channelId from embedded JSON
-  try {
-    const pageUrl = `https://www.youtube.com/@${encodeURIComponent(handle)}`;
-    const resp = await fetch(CORS_FALLBACK2 + encodeURIComponent(pageUrl), { signal: AbortSignal.timeout(8000) });
-    if (resp.ok) {
-      const html = await resp.text();
-      const m = html.match(/"channelId":"(UC[a-zA-Z0-9_-]{21,22})"/);
-      if (m) return m[1];
-    }
-  } catch(e) { console.warn('YouTube handle page resolve failed:', e.message); }
+  // Step 2: fetch the @handle channel page and scrape channelId from embedded JSON
+  // Try all three CORS proxies in sequence
+  const pageUrl = `https://www.youtube.com/@${handle}`;
+  for (const proxy of [CORS_FALLBACK2, CORS_PRIMARY, CORS_FALLBACK]) {
+    try {
+      const resp = await fetch(proxy + encodeURIComponent(pageUrl), { signal: AbortSignal.timeout(8000) });
+      if (resp.ok) {
+        const html = await resp.text();
+        const m = html.match(/"channelId":"(UC[a-zA-Z0-9_-]{21,22})"/);
+        if (m) return m[1];
+      }
+    } catch(e) { /* try next proxy */ }
+  }
 
   // Last resort — return the raw input so the user still sees what they typed
   return raw;
