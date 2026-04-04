@@ -2795,6 +2795,117 @@ async function searchPersonByName() {
   renderRoleResults(query);
 }
 
+function renderRoleResults(query) {
+  const resultsArea = document.getElementById('roleResultsArea');
+  let sectionsHtml = '';
+
+  // Podcast
+  if (_formRoles.has('podcaster')) {
+    const results = _roleResults.podcaster || [];
+    if (results.length > 0) _roleSelections.podcaster = 0;
+    sectionsHtml += `<div class="role-result-section">
+      <div class="role-result-header podcast-color">🎙 Podcast</div>`;
+    if (results.length === 0) {
+      sectionsHtml += `<div class="role-no-results">Nothing found on iTunes</div>`;
+    } else {
+      results.forEach((r, i) => {
+        sectionsHtml += `<div class="role-result-row${i === 0 ? ' selected' : ''}"
+            onclick="selectRoleResult('podcaster', ${i})">
+          <span class="role-result-dot"></span>
+          <span class="role-result-title">${escHtml(r.label)}<br>
+            <span class="role-result-sub">${escHtml(r.sub)}</span>
+          </span>
+        </div>`;
+      });
+    }
+    sectionsHtml += `<input class="inline-override-input" id="override-podcast"
+        placeholder="↳ or paste RSS URL directly…">
+    </div>`;
+  }
+
+  // YouTube
+  if (_formRoles.has('youtuber')) {
+    const results = _roleResults.youtuber || [];
+    if (results.length > 0) _roleSelections.youtuber = 0;
+    sectionsHtml += `<div class="role-result-section">
+      <div class="role-result-header youtube-color">▶ YouTube</div>`;
+    if (results.length === 0) {
+      sectionsHtml += `<div class="role-no-results">Channel not found automatically</div>`;
+    } else {
+      results.forEach((r, i) => {
+        sectionsHtml += `<div class="role-result-row${i === 0 ? ' selected' : ''}"
+            onclick="selectRoleResult('youtuber', ${i})">
+          <span class="role-result-dot"></span>
+          <span class="role-result-title">${escHtml(r.label)}<br>
+            <span class="role-result-sub">${escHtml(r.sub)}</span>
+          </span>
+        </div>`;
+      });
+    }
+    sectionsHtml += `<input class="inline-override-input" id="override-youtube"
+        placeholder="↳ or paste channel ID / @handle / URL…">
+    </div>`;
+  }
+
+  // Blogger (no auto-search — paste field only)
+  if (_formRoles.has('blogger')) {
+    sectionsHtml += `<div class="role-result-section">
+      <div class="role-result-header blog-color">✍ Blog</div>
+      <input class="inline-override-input" id="override-blog"
+          placeholder="↳ paste blog / Substack RSS URL…">
+    </div>`;
+  }
+
+  // Writer (books grid)
+  if (_formRoles.has('writer')) {
+    const results = _roleResults.writer || [];
+    if (results.length > 0) _roleSelections.writer = query;
+    sectionsHtml += `<div class="role-result-section" style="grid-column:1/-1">
+      <div class="role-result-header books-color">📚 Books (Open Library)</div>`;
+    if (results.length === 0) {
+      sectionsHtml += `<div class="role-no-results">No books found — try a different spelling</div>`;
+    } else {
+      sectionsHtml += `<div class="role-books-grid">`;
+      results.forEach(r => {
+        sectionsHtml += `<div class="role-book-card">
+          ${r.thumbnail
+            ? `<img src="${escHtml(r.thumbnail)}" class="role-book-thumb"
+                 onerror="this.style.display='none'">`
+            : ''}
+          <div class="role-book-title">${escHtml(r.label)}</div>
+          <div class="role-result-sub">${r.sub || ''}</div>
+        </div>`;
+      });
+      sectionsHtml += `</div>`;
+    }
+    sectionsHtml += `<input class="inline-override-input" id="override-books"
+        placeholder="↳ or paste Open Library / Goodreads author URL…">
+    </div>`;
+  }
+
+  resultsArea.innerHTML = sectionsHtml
+    ? `<div class="role-results-grid">${sectionsHtml}</div>`
+    : '';
+
+  // Update Add button label dynamically
+  const name   = document.getElementById('f-name').value.trim();
+  const addBtn = document.getElementById('addPersonBtn');
+  if (addBtn && name) addBtn.textContent = `✓ Add ${name}`;
+}
+
+function selectRoleResult(role, idx) {
+  _roleSelections[role] = idx;
+  // Find all result rows for this role and toggle selection
+  const allRows = document.querySelectorAll('#roleResultsArea .role-result-row');
+  let roleIdx = 0;
+  allRows.forEach(row => {
+    if (row.getAttribute('onclick')?.includes(`'${role}'`)) {
+      row.classList.toggle('selected', roleIdx === idx);
+      roleIdx++;
+    }
+  });
+}
+
 function applySuggestion(idx, silent = false) {
   const s = _suggestions[idx];
   if (!s) return;
