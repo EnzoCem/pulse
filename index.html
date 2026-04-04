@@ -2810,29 +2810,50 @@ async function resolveYouTubeChannelId(raw) {
   const handleMatch = raw.match(/(?:youtube\.com\/)?@([a-zA-Z0-9_.-]+)/);
   const handle = handleMatch ? handleMatch[1] : raw.replace(/^@/, '');
 
-  // Step 1: try the legacy ?user= RSS endpoint (still works for many channels)
-  // Try all three CORS proxies in sequence
-  const rssUrl  = `https://www.youtube.com/feeds/videos.xml?user=${encodeURIComponent(handle)}`;
-  for (const proxy of [CORS_FALLBACK2, CORS_PRIMARY, CORS_FALLBACK]) {
+  const proxies = [CORS_FALLBACK2, CORS_PRIMARY, CORS_FALLBACK];
+
+  // Helper: extract a UC… ID from feed XML
+  const extractIdFromFeed = text => {
+    const m = text.match(/<(?:yt:channelId|id)>(?:yt:channel:)?(UC[a-zA-Z0-9_-]{21,22})<\//);
+    return m ? m[1] : null;
+  };
+
+  // Step 0: modern forHandle RSS endpoint — built for the new @handle system
+  // e.g. youtube.com/feeds/videos.xml?forHandle=@TED
+  const forHandleUrl = `https://www.youtube.com/feeds/videos.xml?forHandle=${encodeURIComponent('@' + handle)}`;
+  for (const proxy of proxies) {
     try {
-      const resp = await fetch(proxy + encodeURIComponent(rssUrl), { signal: AbortSignal.timeout(6000) });
+      const resp = await fetch(proxy + encodeURIComponent(forHandleUrl), { signal: AbortSignal.timeout(6000) });
       if (resp.ok) {
-        const text = await resp.text();
-        const m = text.match(/<id>yt:channel:(UC[a-zA-Z0-9_-]{21,22})<\/id>/);
-        if (m) return m[1];
+        const id = extractIdFromFeed(await resp.text());
+        if (id) return id;
       }
     } catch(e) { /* try next proxy */ }
   }
 
-  // Step 2: fetch the @handle channel page and scrape channelId from embedded JSON
-  // Try all three CORS proxies in sequence
+  // Step 1: legacy ?user= RSS endpoint (still works for older channels)
+  const userUrl = `https://www.youtube.com/feeds/videos.xml?user=${encodeURIComponent(handle)}`;
+  for (const proxy of proxies) {
+    try {
+      const resp = await fetch(proxy + encodeURIComponent(userUrl), { signal: AbortSignal.timeout(6000) });
+      if (resp.ok) {
+        const id = extractIdFromFeed(await resp.text());
+        if (id) return id;
+      }
+    } catch(e) { /* try next proxy */ }
+  }
+
+  // Step 2: fetch the @handle channel page and scrape channelId from the HTML
+  // Tries several patterns since YouTube embeds the ID in multiple places
   const pageUrl = `https://www.youtube.com/@${handle}`;
-  for (const proxy of [CORS_FALLBACK2, CORS_PRIMARY, CORS_FALLBACK]) {
+  for (const proxy of proxies) {
     try {
       const resp = await fetch(proxy + encodeURIComponent(pageUrl), { signal: AbortSignal.timeout(8000) });
       if (resp.ok) {
         const html = await resp.text();
-        const m = html.match(/"channelId":"(UC[a-zA-Z0-9_-]{21,22})"/);
+        const m = html.match(/"channelId":"(UC[a-zA-Z0-9_-]{21,22})"/)
+               || html.match(/"externalId":"(UC[a-zA-Z0-9_-]{21,22})"/)
+               || html.match(/\/channel\/(UC[a-zA-Z0-9_-]{21,22})["\/]/);
         if (m) return m[1];
       }
     } catch(e) { /* try next proxy */ }
