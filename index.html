@@ -1512,6 +1512,120 @@ const CORS_FALLBACK  = 'https://api.allorigins.win/raw?url=';
 const CORS_FALLBACK2 = 'https://api.codetabs.com/v1/proxy?quest=';
 const FEED_TTL_MS = 6 * 60 * 60 * 1000  // 6 hours — background refresh threshold
 
+// ── SHARED UTILITIES (from Main Rules/utilities/js/) ─────────────────────────
+
+/** Abort-responsive sleep. Resolves after ms, or immediately if signal fires. */
+function sleep(ms, signal) {
+  return new Promise(resolve => {
+    if (signal?.aborted) return resolve();
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
+  });
+}
+
+/** Race a promise against a timeout. Throws an Error on timeout. */
+function withTimeout(promise, ms, message = 'timeout') {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Wrap an async function so concurrent calls queue instead of racing.
+ * E.g. rapid double-clicks on a card's ↻ button run sequentially, not in parallel.
+ */
+function sequential(fn) {
+  const queue = [];
+  let processing = false;
+  async function processQueue() {
+    if (processing || !queue.length) return;
+    processing = true;
+    while (queue.length) {
+      const { args, resolve, reject } = queue.shift();
+      try { resolve(await fn(...args)); } catch (e) { reject(e); }
+    }
+    processing = false;
+    if (queue.length) processQueue();
+  }
+  return function (...args) {
+    return new Promise((resolve, reject) => { queue.push({ args, resolve, reject }); processQueue(); });
+  };
+}
+
+/**
+ * Fixed-size circular buffer — auto-evicts oldest item when full.
+ * Used for bounded entry storage per person (max 20 non-books, max 15 books).
+ */
+class CircularBuffer {
+  constructor(capacity) {
+    this.buf = new Array(capacity);
+    this.capacity = capacity;
+    this.head = 0;
+    this._size = 0;
+  }
+  add(item) {
+    this.buf[this.head] = item;
+    this.head = (this.head + 1) % this.capacity;
+    if (this._size < this.capacity) this._size++;
+  }
+  toArray() {
+    if (!this._size) return [];
+    const start = this._size < this.capacity ? 0 : this.head;
+    return Array.from({ length: this._size }, (_, i) => this.buf[(start + i) % this.capacity]);
+  }
+  get size() { return this._size; }
+}
+
+/** Normalize any caught value to an Error instance. */
+const toError      = e => e instanceof Error ? e : new Error(String(e));
+/** Extract a message string from any error-like value. */
+const errorMessage = e => e instanceof Error ? e.message : String(e);
+/** True if error is an AbortError (fetch cancelled, signal fired, etc.). */
+const isAbortError = e => e instanceof Error && e.name === 'AbortError';
+
+/**
+ * Stale-while-revalidate memoization for async functions.
+ * - First call: awaits and caches the result.
+ * - Subsequent calls within ttlMs: returns cached value instantly.
+ * - After ttlMs: returns stale cached value immediately, revalidates in background.
+ * - In-flight dedup: concurrent calls for the same key share one promise.
+ * (from Main Rules/utilities/js/memoize.js)
+ */
+function memoizeWithTTLAsync(fn, ttlMs = 5 * 60 * 1000) {
+  const cache    = new Map();
+  const inFlight = new Map();
+  const memoized = async function (...args) {
+    const key    = JSON.stringify(args);
+    const cached = cache.get(key);
+    const now    = Date.now();
+    if (!cached) {
+      if (inFlight.has(key)) return inFlight.get(key);
+      const promise = fn(...args);
+      inFlight.set(key, promise);
+      try {
+        const result = await promise;
+        if (inFlight.get(key) === promise) cache.set(key, { value: result, timestamp: now, refreshing: false });
+        return result;
+      } finally {
+        if (inFlight.get(key) === promise) inFlight.delete(key);
+      }
+    }
+    if (now - cached.timestamp > ttlMs && !cached.refreshing) {
+      cached.refreshing = true;
+      const stale = cached;
+      fn(...args)
+        .then(v  => { if (cache.get(key) === stale) cache.set(key, { value: v, timestamp: Date.now(), refreshing: false }); })
+        .catch(() => { if (cache.get(key) === stale) cache.delete(key); });
+      return cached.value;
+    }
+    return cache.get(key).value;
+  };
+  memoized.cache = { clear: () => { cache.clear(); inFlight.clear(); } };
+  return memoized;
+}
+
 // Free Nitter instances for X/Twitter RSS (tried in order; first working one wins)
 
 // ── STATE ──
@@ -3470,7 +3584,7 @@ async function resolveApplePodcastUrl(url) {
   } catch(e) { return url; }
 }
 
-async function fetchPerson(person) {
+async function _fetchPersonCore(person) {
   if (!person) return;
   // Auto-resolve Apple Podcasts page URLs → actual RSS feed URLs before fetching.
   // This fixes cards where the user accidentally pasted an Apple Podcasts link.
@@ -3527,15 +3641,18 @@ async function fetchPerson(person) {
   }
 
   // Run all feeds in parallel, but enforce a 30s hard cap on the whole fetch
-  const TIMEOUT = new Promise(resolve => setTimeout(resolve, 30000));
-  await Promise.race([Promise.allSettled(tasks), TIMEOUT]);
+  await withTimeout(Promise.allSettled(tasks), 30_000, 'feed fetch timeout').catch(() => {});
 
-  // Keep books separate — they have old publication dates and would be cut off
-  // by the 20-entry slice if podcast + YouTube fill all slots with newer dates.
+  // Keep books separate — they have old publication dates and would be pushed out
+  // by the 20-entry cap if podcast + YouTube fill all slots with newer dates.
+  // CircularBuffer (from Main Rules) auto-evicts oldest when full.
   const bookEntries  = newEntries.filter(e => e.platform === 'books');
   const otherEntries = newEntries.filter(e => e.platform !== 'books');
-  const otherKept    = deduplicateEntries(otherEntries).slice(0, 20);
-  person.entries     = [...otherKept, ...bookEntries.slice(0, 15)];
+  const otherBuf = new CircularBuffer(20);
+  for (const e of deduplicateEntries(otherEntries)) otherBuf.add(e);
+  const bookBuf = new CircularBuffer(15);
+  for (const e of bookEntries) bookBuf.add(e);
+  person.entries = [...otherBuf.toArray(), ...bookBuf.toArray()];
   person.lastUpdated = new Date().toISOString();
   person.fetchErrors = failedFeeds;
   person.loading     = false;
@@ -3545,6 +3662,19 @@ async function fetchPerson(person) {
   updateStatus();
   if (currentView === 'timeline') renderTimeline();
   if (btn) btn.classList.remove('spinning');
+}
+
+// Per-person sequential queue (from Main Rules sequential utility).
+// Ensures that if the user triggers two refreshes for the same person in quick
+// succession (e.g. Refresh All fires while a card spinner is already running),
+// the second waits for the first to finish rather than racing against it.
+const _personQueues = new Map();
+function fetchPerson(person) {
+  if (!person) return Promise.resolve();
+  if (!_personQueues.has(person.id)) {
+    _personQueues.set(person.id, sequential(p => _fetchPersonCore(p)));
+  }
+  return _personQueues.get(person.id)(person);
 }
 
 // ── STALE-WHILE-REVALIDATE ──
@@ -3676,11 +3806,11 @@ async function fetchRSS(url, platform, personId, _redirected = false) {
   let xml = null;
   let resolvedUrl = url;
 
-  const t = ms => new Promise(resolve => setTimeout(resolve, ms));
-  const timedFetch = (u, ms) => Promise.race([
-    fetch(u, { signal: AbortSignal.timeout(ms) }),
-    t(ms).then(() => ({ ok: false }))
-  ]);
+  // Use withTimeout from shared utilities — cleaner than an inline Promise.race
+  const timedFetch = async (u, ms) => {
+    try { return await withTimeout(fetch(u, { signal: AbortSignal.timeout(ms) }), ms, 'timeout'); }
+    catch { return { ok: false }; }
+  };
 
   // Step 1: Direct fetch — YouTube RSS and many podcast feeds support CORS natively
   try {
@@ -5221,40 +5351,6 @@ function _saveAskSourcesAsNote() {
 }
 
 // ── CALIBRE INTEGRATION ──
-
-// memoizeWithTTLAsync — stale-while-revalidate async memoization (adapted from Main Rules/utilities/js/memoize.js)
-function memoizeWithTTLAsync(fn, ttlMs = 5 * 60 * 1000) {
-  const cache = new Map();
-  const inFlight = new Map();
-  const memoized = async function (...args) {
-    const key = JSON.stringify(args);
-    const cached = cache.get(key);
-    const now = Date.now();
-    if (!cached) {
-      if (inFlight.has(key)) return inFlight.get(key);
-      const promise = fn(...args);
-      inFlight.set(key, promise);
-      try {
-        const result = await promise;
-        if (inFlight.get(key) === promise) cache.set(key, { value: result, timestamp: now, refreshing: false });
-        return result;
-      } finally {
-        if (inFlight.get(key) === promise) inFlight.delete(key);
-      }
-    }
-    if (now - cached.timestamp > ttlMs && !cached.refreshing) {
-      cached.refreshing = true;
-      const staleEntry = cached;
-      fn(...args)
-        .then(v  => { if (cache.get(key) === staleEntry) cache.set(key, { value: v, timestamp: Date.now(), refreshing: false }); })
-        .catch(() => { if (cache.get(key) === staleEntry) cache.delete(key); });
-      return cached.value;
-    }
-    return cache.get(key).value;
-  };
-  memoized.cache = { clear: () => { cache.clear(); inFlight.clear(); } };
-  return memoized;
-}
 
 async function _searchCalibreInner(title, author) {
   const baseUrl = (pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
