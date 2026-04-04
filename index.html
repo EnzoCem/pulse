@@ -1147,36 +1147,100 @@
       <button class="type-btn"        id="typeSourceBtn" onclick="setAddType('source')">📰 Publication / Source</button>
     </div>
 
-    <!-- Step 1: search by name -->
-    <div class="form-row" style="margin-bottom:8px">
+    <!-- Name + Search -->
+    <div class="form-row" style="margin-bottom:12px">
       <label id="f-name-label">Name *</label>
       <div class="search-name-row">
-        <input type="text" id="f-name" placeholder="e.g. Michael Pollan — press Search to auto-fill"
+        <input type="text" id="f-name" placeholder="e.g. Tim Ferriss"
+               oninput="_updateSearchBtn()"
                onkeydown="if(event.key==='Enter')searchPersonByName()">
-        <button class="btn-search" id="searchBtn" onclick="searchPersonByName()">🔍 Search</button>
+        <button class="btn-search" id="searchBtn" onclick="searchPersonByName()" disabled>🔍 Search</button>
       </div>
     </div>
 
-    <!-- Search results -->
+    <!-- Role checkboxes — PERSON mode only -->
+    <div id="rolePickerWrap">
+      <div class="form-row" style="margin-bottom:8px">
+        <label>What do they do? <span style="color:var(--border)">(pick at least one)</span></label>
+        <div class="role-chip-grid">
+          <button class="role-chip" id="role-podcaster" onclick="toggleRole('podcaster')">
+            <span class="role-dot"></span><span style="color:var(--podcast)">🎙 Podcaster</span>
+          </button>
+          <button class="role-chip" id="role-youtuber" onclick="toggleRole('youtuber')">
+            <span class="role-dot"></span><span style="color:var(--youtube)">▶ YouTuber</span>
+          </button>
+          <button class="role-chip" id="role-blogger" onclick="toggleRole('blogger')">
+            <span class="role-dot"></span><span style="color:var(--blog)">✍ Blogger</span>
+          </button>
+          <button class="role-chip" id="role-writer" onclick="toggleRole('writer')">
+            <span class="role-dot"></span><span style="color:#c084fc">📚 Writer</span>
+          </button>
+        </div>
+      </div>
+      <div class="twitter-hint">💡 X / Twitter: add via ✎ edit after the person is created</div>
+    </div>
+
+    <!-- Dynamic results (role search results + inline overrides) — PERSON mode -->
+    <div id="roleResultsArea"></div>
+
+    <!-- Suggestion area — SOURCE mode only -->
     <div id="suggestArea"></div>
 
-    <!-- Step 2: review / fill remaining fields -->
-    <div class="form-grid">
+    <!-- Feed inputs — SOURCE mode only (hidden in person mode) -->
+    <div id="feedInputsSection" style="display:none">
+      <div class="feed-section-title">Feed URLs — paste any you have (leave blank to skip)</div>
+      <div class="feed-inputs">
+        <div class="feed-row">
+          <div class="platform-badge" style="background:#2a1a10; font-size:16px;" id="f-podcast-icon">🎙</div>
+          <div class="form-row" style="flex:1">
+            <label id="f-podcast-label">Podcast RSS</label>
+            <input type="text" id="f-podcast" placeholder="https://feeds.example.com/...">
+          </div>
+        </div>
+        <div class="feed-row">
+          <div class="platform-badge" style="background:#1a0f0f; font-size:16px;">▶️</div>
+          <div class="form-row" style="flex:1">
+            <label>YouTube Channel ID, @handle, or URL</label>
+            <input type="text" id="f-youtube" placeholder="UCxxxxxxx  or  @handle  or  youtube.com/@…">
+          </div>
+        </div>
+        <div class="feed-row">
+          <div class="platform-badge" style="background:#0f1e2a; font-size:16px;">𝕏</div>
+          <div class="form-row" style="flex:1">
+            <label>X / Twitter RSS (via rss.app or Nitter)</label>
+            <input type="text" id="f-twitter" placeholder="https://rss.app/feeds/…  or  @username">
+          </div>
+        </div>
+        <div class="feed-row">
+          <div class="platform-badge" style="background:#162010; font-size:16px;">✍️</div>
+          <div class="form-row" style="flex:1">
+            <label>Blog / Substack RSS</label>
+            <input type="text" id="f-blog" placeholder="https://example.substack.com/feed">
+          </div>
+        </div>
+        <div class="feed-row">
+          <div class="platform-badge" style="background:#1a1030; font-size:16px;">📚</div>
+          <div class="form-row" style="flex:1">
+            <label>Books search query</label>
+            <input type="text" id="f-books" placeholder="e.g. Tim Ferriss  or  leave blank for auto">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Optional details (both modes) -->
+    <div class="form-grid" style="margin-top:12px">
       <div class="form-row">
         <label>Description</label>
-        <input type="text" id="f-desc" placeholder="e.g. Author, food journalist">
-      </div>
-      <div class="form-row">
-        <label>Website</label>
-        <input type="text" id="f-website" placeholder="https://lexfridman.com">
+        <input type="text" id="f-desc" placeholder="e.g. Author, investor…">
       </div>
       <div class="form-row">
         <label>Avatar URL (optional)</label>
-        <input type="text" id="f-avatar" placeholder="https://...">
+        <input type="text" id="f-avatar" placeholder="https://…">
       </div>
     </div>
 
-    <!-- Tags input -->
+    <!-- Tags (both modes) -->
     <div class="form-row" style="margin-bottom:12px">
       <label>Topics / Tags <span style="color:var(--muted);font-weight:400">(Enter or comma to add)</span></label>
       <div class="tag-input-wrap" id="tagInputWrap" onclick="document.getElementById('f-tag-input').focus()">
@@ -1186,48 +1250,9 @@
       </div>
     </div>
 
-    <div class="feed-section-title">Feed URLs — paste any you have (leave blank to skip)</div>
-    <div class="feed-inputs">
-      <div class="feed-row">
-        <div class="platform-badge" style="background:#2a1a10; font-size:16px;" id="f-podcast-icon">🎙</div>
-        <div class="form-row" style="flex:1">
-          <label id="f-podcast-label">Podcast RSS</label>
-          <input type="text" id="f-podcast" placeholder="https://feeds.example.com/...">
-        </div>
-      </div>
-      <div class="feed-row">
-        <div class="platform-badge" style="background:#1a0f0f; font-size:16px;">▶️</div>
-        <div class="form-row" style="flex:1">
-          <label>YouTube Channel ID, @handle, or URL</label>
-          <input type="text" id="f-youtube" placeholder="UCxxxxxxx  or  @PowerfulJRE  or  youtube.com/@…">
-        </div>
-      </div>
-      <div class="feed-row">
-        <div class="platform-badge" style="background:#0f1e2a; font-size:16px;">𝕏</div>
-        <div class="form-row" style="flex:1">
-          <label>X / Twitter RSS (via rss.app)</label>
-          <input type="text" id="f-twitter" placeholder="https://rss.app/feeds/… (rss.app RSS URL)">
-        </div>
-      </div>
-      <div class="feed-row">
-        <div class="platform-badge" style="background:#162010; font-size:16px;">✍️</div>
-        <div class="form-row" style="flex:1">
-          <label>Blog / Substack RSS</label>
-          <input type="text" id="f-blog" placeholder="https://example.substack.com/feed">
-        </div>
-      </div>
-      <div class="feed-row">
-        <div class="platform-badge" style="background:#1a1030; font-size:16px;">📚</div>
-        <div class="form-row" style="flex:1">
-          <label>Books search query <span style="color:var(--muted);font-weight:400">(optional — defaults to person name)</span></label>
-          <input type="text" id="f-books" placeholder="e.g. Tim Ferriss  or  leave blank for auto">
-        </div>
-      </div>
-    </div>
-
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="toggleAddPanel()">Cancel</button>
-      <button class="btn btn-primary" onclick="addPerson()">Add Person</button>
+      <button class="btn btn-primary" id="addPersonBtn" onclick="addPerson()">Add Person</button>
     </div>
   </div>
 
