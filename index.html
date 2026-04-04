@@ -2637,16 +2637,28 @@ async function resolveYouTubeChannelId(raw) {
   const handleMatch = raw.match(/(?:youtube\.com\/)?@([a-zA-Z0-9_.-]+)/);
   const handle = handleMatch ? handleMatch[1] : raw.replace(/^@/, '');
 
-  // Fetch the YouTube RSS using ?user= — it embeds the channel ID in the feed
-  const rssUrl = `https://www.youtube.com/feeds/videos.xml?user=${encodeURIComponent(handle)}`;
+  // Step 1: try the legacy ?user= RSS endpoint (still works for many channels)
   try {
-    const resp = await fetch(CORS_FALLBACK2 + encodeURIComponent(rssUrl), { signal: AbortSignal.timeout(8000) });
+    const rssUrl = `https://www.youtube.com/feeds/videos.xml?user=${encodeURIComponent(handle)}`;
+    const resp = await fetch(CORS_FALLBACK2 + encodeURIComponent(rssUrl), { signal: AbortSignal.timeout(6000) });
     if (resp.ok) {
       const text = await resp.text();
-      const m = text.match(/<id>yt:channel:([^<]+)<\/id>/);
-      if (m) return 'UC' + m[1];
+      // The feed contains <id>yt:channel:UCxxxxxx</id> — m[1] is already the full UC… ID
+      const m = text.match(/<id>yt:channel:(UC[a-zA-Z0-9_-]{21,22})<\/id>/);
+      if (m) return m[1];
     }
-  } catch(e) { console.warn('YouTube channel resolve failed:', e.message); }
+  } catch(e) { /* silent */ }
+
+  // Step 2: fetch the @handle channel page and extract channelId from embedded JSON
+  try {
+    const pageUrl = `https://www.youtube.com/@${encodeURIComponent(handle)}`;
+    const resp = await fetch(CORS_FALLBACK2 + encodeURIComponent(pageUrl), { signal: AbortSignal.timeout(8000) });
+    if (resp.ok) {
+      const html = await resp.text();
+      const m = html.match(/"channelId":"(UC[a-zA-Z0-9_-]{21,22})"/);
+      if (m) return m[1];
+    }
+  } catch(e) { console.warn('YouTube handle page resolve failed:', e.message); }
 
   // Last resort — return the raw input so the user still sees what they typed
   return raw;
