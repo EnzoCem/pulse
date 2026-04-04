@@ -2256,6 +2256,13 @@ function renderPersonDetail() {
           <input class="detail-input" id="df-website" value="${escHtml(person.website||'')}" placeholder="https://lexfridman.com">
         </div>
         <div class="detail-field">
+          <div class="detail-lbl">Transcripts URL
+            ${person.transcriptsUrl ? `<a href="${escHtml(person.transcriptsUrl)}" target="_blank" rel="noopener"
+              style="color:var(--accent);font-size:10px;margin-left:6px;text-decoration:none" title="Open transcripts page">📋</a>` : ''}
+          </div>
+          <input class="detail-input" id="df-transcripts" value="${escHtml(person.transcriptsUrl||'')}" placeholder="https://lexfridman.com/transcripts">
+        </div>
+        <div class="detail-field">
           <div class="detail-lbl">Avatar URL</div>
           <input class="detail-input" id="df-avatar" value="${escHtml(person.avatar||'')}" placeholder="https://…"
                  oninput="previewDetailAvatar(this.value)">
@@ -2361,10 +2368,11 @@ async function savePersonDetail() {
   const btn = document.querySelector('.detail-save-btn');
   const msg = document.getElementById('detail-save-msg');
 
-  p.name    = document.getElementById('df-name')?.value.trim()    || p.name;
-  p.desc    = document.getElementById('df-desc')?.value.trim()    || '';
-  p.website = document.getElementById('df-website')?.value.trim() || '';
-  p.avatar  = document.getElementById('df-avatar')?.value.trim()  || '';
+  p.name           = document.getElementById('df-name')?.value.trim()        || p.name;
+  p.desc           = document.getElementById('df-desc')?.value.trim()        || '';
+  p.website        = document.getElementById('df-website')?.value.trim()     || '';
+  p.transcriptsUrl = document.getElementById('df-transcripts')?.value.trim() || '';
+  p.avatar         = document.getElementById('df-avatar')?.value.trim()      || '';
   p.tags   = [..._detailFormTags];
   p.feeds.podcast = document.getElementById('df-podcast')?.value.trim() || '';
   p.feeds.blog    = document.getElementById('df-blog')?.value.trim()    || '';
@@ -3845,6 +3853,11 @@ function openEntry(entry) {
       tBtn.href        = entry.transcriptUrl;
       tBtn.textContent = '📄 Transcript';
       tBtn.title       = 'Open episode transcript (provided by the podcast RSS feed)';
+    } else if (person.transcriptsUrl) {
+      // Person-level transcripts page (set in Edit profile)
+      tBtn.href        = person.transcriptsUrl;
+      tBtn.textContent = '📋 Transcripts';
+      tBtn.title       = `Open ${escHtml(person.name)}'s transcripts page`;
     } else {
       // Fallback: targeted Google search — "<Show>" "<Episode>" "<Month Year>" transcript
       const showName = person.name ? `"${person.name}"` : '';

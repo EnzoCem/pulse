@@ -199,8 +199,9 @@ RSS feeds are fetched through a chain of three public CORS proxies, tried in ord
   id:          string,        // slugified name + timestamp
   name:        string,
   desc:        string,
-  website:     string,        // optional homepage URL
-  avatar:      string,        // image URL, optional
+  website:        string,        // optional homepage URL
+  transcriptsUrl: string,        // optional URL to person's transcripts page (podcast entries)
+  avatar:         string,        // image URL, optional
   type:        'person' | 'source',  // person = individual, source = publication
   feeds: {
     podcast:   string,        // full RSS URL (or "Main RSS Feed" for sources)

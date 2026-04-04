@@ -41,9 +41,10 @@ Pulse/
 {
   id:          string,        // e.g. "joe-rogan-1711234567890"
   name:        string,        // display name
-  desc:        string,        // optional subtitle
-  website:     string,        // optional homepage URL
-  avatar:      string,        // optional image URL
+  desc:           string,        // optional subtitle
+  website:        string,        // optional homepage URL
+  transcriptsUrl: string,        // optional URL to the person's transcripts page (podcast entries)
+  avatar:         string,        // optional image URL
   type:        'person'|'source',  // person = individual, source = publication
   feeds: {
     podcast:   string,        // full RSS URL (or "Main RSS Feed" for sources)
