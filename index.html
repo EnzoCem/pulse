@@ -1235,8 +1235,14 @@
         <input type="text" id="f-desc" placeholder="e.g. Author, investor…">
       </div>
       <div class="form-row">
-        <label>Avatar URL (optional)</label>
-        <input type="text" id="f-avatar" placeholder="https://…">
+        <label id="f-avatar-label">Avatar URL (optional)</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="f-avatar" placeholder="https://…" style="flex:1"
+                 oninput="_setAvatarPreview()">
+          <img id="f-avatar-preview" src="" alt=""
+               style="display:none;width:36px;height:36px;border-radius:50%;object-fit:cover;border:1px solid var(--border);flex-shrink:0"
+               onerror="this.style.display='none'">
+        </div>
       </div>
     </div>
 
@@ -2424,10 +2430,16 @@ function toggleAddPanel() {
     _formRoles      = new Set(['podcaster','youtuber','blogger','writer']);
     _roleResults    = {};
     _roleSelections = {};
+    _foundAvatar    = '';
     // Check all role chips by default
     ['podcaster','youtuber','blogger','writer'].forEach(r => {
       document.getElementById('role-' + r)?.classList.add('checked');
     });
+    // Reset avatar preview
+    const avatarPreview = document.getElementById('f-avatar-preview');
+    const avatarLabel   = document.getElementById('f-avatar-label');
+    if (avatarPreview) avatarPreview.style.display = 'none';
+    if (avatarLabel)   avatarLabel.textContent = 'Avatar URL (optional)';
     _formTags = []; renderFormTagChips();
     // Reset Add button label
     const addBtn = document.getElementById('addPersonBtn');
@@ -2478,8 +2490,38 @@ let _suggestions  = [];
 let _formRoles    = new Set();   // which role chips are checked
 let _roleResults  = {};          // { podcaster: [...], youtuber: [...], writer: [...] }
 let _roleSelections = {};        // { podcaster: 0, youtuber: 0, writer: 'query-string' }
+let _foundAvatar  = '';          // auto-discovered avatar URL (Wikipedia or iTunes artwork)
 
 // ── helpers ──
+
+async function _fetchWikipediaAvatar(name) {
+  try {
+    const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name)}`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!r.ok) return '';
+    const data = await r.json();
+    // Prefer originalimage (higher res) but fall back to thumbnail
+    return data.originalimage?.source || data.thumbnail?.source || '';
+  } catch { return ''; }
+}
+
+function _setAvatarPreview(url) {
+  const field   = document.getElementById('f-avatar');
+  const preview = document.getElementById('f-avatar-preview');
+  const label   = document.getElementById('f-avatar-label');
+  if (field && !field.value.trim() && url) {
+    field.value = url;
+    if (label) label.textContent = 'Avatar URL (auto-filled)';
+  }
+  if (preview) {
+    if (field?.value.trim()) {
+      preview.src = field.value.trim();
+      preview.style.display = '';
+    } else {
+      preview.style.display = 'none';
+    }
+  }
+}
 
 function toggleRole(role) {
   if (_formRoles.has(role)) {
@@ -2737,11 +2779,15 @@ async function searchPersonByName() {
   // ── PERSON mode: role-based parallel search ──
   _roleResults    = {};
   _roleSelections = {};
+  _foundAvatar    = '';
   const resultsArea = document.getElementById('roleResultsArea');
   resultsArea.innerHTML = '<div class="suggest-status">Searching…</div>';
 
   // Build role-scoped API calls
   const tasks = [];
+
+  // Always try Wikipedia for a person photo, runs in parallel with role searches
+  tasks.push((async () => { _foundAvatar = await _fetchWikipediaAvatar(query); })());
 
   if (_formRoles.has('podcaster')) {
     tasks.push((async () => {
@@ -2800,6 +2846,11 @@ async function searchPersonByName() {
   await Promise.allSettled(tasks);
 
   btn.disabled = false; btn.textContent = '🔍 Search';
+
+  // Auto-fill avatar: Wikipedia photo first, iTunes artwork fallback for podcasters
+  const itunesAvatar = _roleResults.podcaster?.[0]?.avatar || '';
+  _setAvatarPreview(_foundAvatar || itunesAvatar);
+
   renderRoleResults(query);
 }
 
@@ -3023,6 +3074,11 @@ async function addPerson() {
   _formRoles      = new Set();
   _roleResults    = {};
   _roleSelections = {};
+  _foundAvatar    = '';
+  const _ap = document.getElementById('f-avatar-preview');
+  const _al = document.getElementById('f-avatar-label');
+  if (_ap) _ap.style.display = 'none';
+  if (_al) _al.textContent = 'Avatar URL (optional)';
   ['podcaster','youtuber','blogger','writer'].forEach(r => {
     document.getElementById('role-' + r)?.classList.remove('checked');
   });
