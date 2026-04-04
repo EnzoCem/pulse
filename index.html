@@ -1501,13 +1501,8 @@ const PLATFORMS = {
   books:   { label: 'Books',   color: 'var(--books)',   emoji: '📚' },
 };
 
-// If a person has a YouTube channel but no podcast RSS, their YouTube entries
-// are the podcast — show them with podcast styling instead of YouTube styling.
 function getPlatform(entry, person) {
-  if (entry.platform === 'youtube' && person?.feeds?.youtube && !person?.feeds?.podcast) {
-    return PLATFORMS.podcast;
-  }
-  return PLATFORMS[entry.platform];
+  return PLATFORMS[entry.platform] || PLATFORMS.blog;
 }
 
 // ── CORS PROXIES ──
@@ -3435,14 +3430,12 @@ function titlesAreDuplicates(a, b) {
 }
 
 function deduplicateEntries(entries) {
-  // Sort newest first, then prefer higher-value platforms
-  const sorted = [...entries].sort((a, b) =>
-    new Date(b.date) - new Date(a.date) ||
-    (PLATFORM_PREF[b.platform] ?? 0) - (PLATFORM_PREF[a.platform] ?? 0)
-  );
+  // Only dedup within the same platform — podcast + youtube entries with the
+  // same title are intentionally kept as separate items (different media types).
+  const sorted = [...entries].sort((a, b) => new Date(b.date) - new Date(a.date));
   const kept = [];
   for (const entry of sorted) {
-    if (!kept.some(k => titlesAreDuplicates(k, entry))) kept.push(entry);
+    if (!kept.some(k => k.platform === entry.platform && titlesAreDuplicates(k, entry))) kept.push(entry);
   }
   return kept;
 }
@@ -3505,9 +3498,9 @@ async function fetchPerson(person) {
     if (person.feeds.podcast)   tasks.push(pull(person.feeds.podcast, 'blog'));
     if (person.feeds.blog)      tasks.push(pull(person.feeds.blog,    'blog'));
   } else {
-    if (ytValid && !person.feeds.podcast) tasks.push(pull(`https://www.youtube.com/feeds/videos.xml?channel_id=${ytId}`, 'youtube'));
-    if (person.feeds.podcast)   tasks.push(pull(person.feeds.podcast, 'podcast'));
-    if (person.feeds.blog)      tasks.push(pull(person.feeds.blog,    'blog'));
+    if (ytValid)              tasks.push(pull(`https://www.youtube.com/feeds/videos.xml?channel_id=${ytId}`, 'youtube'));
+    if (person.feeds.podcast) tasks.push(pull(person.feeds.podcast, 'podcast'));
+    if (person.feeds.blog)    tasks.push(pull(person.feeds.blog,    'blog'));
   }
 
   // Books: query Google Books API (uses feeds.books override or falls back to person name)
