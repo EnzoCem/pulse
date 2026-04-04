@@ -1068,14 +1068,14 @@
   .search-name-row { display: flex; gap: 8px; }
   .search-name-row input { flex: 1; }
   .btn-search {
-    background: none; border: 1px solid var(--border);
-    color: var(--muted); cursor: pointer; border-radius: 4px;
-    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    background: var(--accent); border: 1px solid var(--accent);
+    color: #0d0d0f; cursor: pointer; border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
     letter-spacing: 0.06em; text-transform: uppercase;
-    padding: 0 14px; white-space: nowrap; transition: all 0.15s; flex-shrink: 0;
+    padding: 0 18px; white-space: nowrap; transition: all 0.15s; flex-shrink: 0;
   }
-  .btn-search:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-  .btn-search:disabled { opacity: 0.45; cursor: default; }
+  .btn-search:hover:not(:disabled) { background: #f0d45a; border-color: #f0d45a; }
+  .btn-search:disabled { background: none; border-color: var(--border); color: var(--muted); opacity: 0.45; cursor: default; }
 
   #suggestArea { margin: 8px 0 4px; }
   .suggest-status {
@@ -2421,12 +2421,12 @@ function toggleAddPanel() {
     document.getElementById('suggestArea').innerHTML  = '';
     document.getElementById('roleResultsArea').innerHTML = '';
     _suggestions    = [];
-    _formRoles      = new Set();
+    _formRoles      = new Set(['podcaster','youtuber','blogger','writer']);
     _roleResults    = {};
     _roleSelections = {};
-    // Reset role chip visual state
+    // Check all role chips by default
     ['podcaster','youtuber','blogger','writer'].forEach(r => {
-      document.getElementById('role-' + r)?.classList.remove('checked');
+      document.getElementById('role-' + r)?.classList.add('checked');
     });
     _formTags = []; renderFormTagChips();
     // Reset Add button label
