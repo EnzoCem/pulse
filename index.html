@@ -804,6 +804,15 @@
     padding: 8px 10px; box-sizing: border-box; transition: border-color 0.15s;
   }
   .detail-input:focus { outline: none; border-color: var(--accent); }
+  .detail-wiki-extract {
+    font-family: 'Libre Baskerville', serif; font-size: 12px; line-height: 1.6;
+    color: var(--muted); background: var(--bg); border: 1px solid var(--border);
+    border-radius: 4px; padding: 10px 12px;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    overflow: hidden; cursor: default;
+    transition: -webkit-line-clamp 0.2s;
+  }
+  .detail-wiki-extract.expanded { -webkit-line-clamp: unset; }
   .detail-name-input {
     font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 700;
     color: var(--text); padding: 4px 0; background: none; border: none;
@@ -2261,6 +2270,15 @@ function renderPersonDetail() {
           </div>
           <input class="detail-input" id="df-website" value="${escHtml(person.website||'')}" placeholder="https://lexfridman.com">
         </div>
+        ${person.wikiExtract ? `
+        <div class="detail-field">
+          <div class="detail-lbl">Wikipedia Bio
+            ${person.wikiUrl ? `<a href="${escHtml(person.wikiUrl)}" target="_blank" rel="noopener"
+              style="color:var(--accent);font-size:10px;margin-left:6px;text-decoration:none" title="Open Wikipedia page">↗ Wikipedia</a>` : ''}
+          </div>
+          <div class="detail-wiki-extract" title="Click to expand"
+               onclick="this.classList.toggle('expanded')">${escHtml(person.wikiExtract)}</div>
+        </div>` : ''}
         <div class="detail-field">
           <div class="detail-lbl">Transcripts URL
             ${person.transcriptsUrl ? `<a href="${escHtml(person.transcriptsUrl)}" target="_blank" rel="noopener"
@@ -2430,7 +2448,7 @@ function toggleAddPanel() {
     _formRoles      = new Set(['podcaster','youtuber','blogger','writer']);
     _roleResults    = {};
     _roleSelections = {};
-    _foundAvatar    = '';
+    _foundWiki      = null;
     // Check all role chips by default
     ['podcaster','youtuber','blogger','writer'].forEach(r => {
       document.getElementById('role-' + r)?.classList.add('checked');
@@ -2490,19 +2508,25 @@ let _suggestions  = [];
 let _formRoles    = new Set();   // which role chips are checked
 let _roleResults  = {};          // { podcaster: [...], youtuber: [...], writer: [...] }
 let _roleSelections = {};        // { podcaster: 0, youtuber: 0, writer: 'query-string' }
-let _foundAvatar  = '';          // auto-discovered avatar URL (Wikipedia or iTunes artwork)
+let _foundWiki    = null;         // auto-discovered Wikipedia data { avatar, description, extract, wikiUrl }
 
 // ── helpers ──
 
-async function _fetchWikipediaAvatar(name) {
+async function _fetchWikipediaInfo(name) {
   try {
     const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name)}`;
     const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
-    if (!r.ok) return '';
-    const data = await r.json();
-    // Prefer originalimage (higher res) but fall back to thumbnail
-    return data.originalimage?.source || data.thumbnail?.source || '';
-  } catch { return ''; }
+    if (!r.ok) return null;
+    const d = await r.json();
+    // Only accept articles about people (disambiguation pages have type "disambiguation")
+    if (d.type === 'disambiguation') return null;
+    return {
+      avatar:      d.originalimage?.source || d.thumbnail?.source || '',
+      description: d.description || '',
+      extract:     d.extract     || '',
+      wikiUrl:     d.content_urls?.desktop?.page || '',
+    };
+  } catch { return null; }
 }
 
 function _setAvatarPreview(url) {
@@ -2520,6 +2544,22 @@ function _setAvatarPreview(url) {
     } else {
       preview.style.display = 'none';
     }
+  }
+}
+
+function _applyWikipediaFields(wiki) {
+  if (!wiki) return;
+  // Avatar
+  _setAvatarPreview(wiki.avatar);
+  // Description — auto-fill if blank
+  const descField = document.getElementById('f-desc');
+  if (descField && !descField.value.trim() && wiki.description) {
+    descField.value = wiki.description;
+  }
+  // Website — auto-fill with Wikipedia URL if blank
+  const webField = document.getElementById('f-website');
+  if (webField && !webField.value.trim() && wiki.wikiUrl) {
+    webField.value = wiki.wikiUrl;
   }
 }
 
@@ -2779,15 +2819,15 @@ async function searchPersonByName() {
   // ── PERSON mode: role-based parallel search ──
   _roleResults    = {};
   _roleSelections = {};
-  _foundAvatar    = '';
+  _foundWiki      = null;
   const resultsArea = document.getElementById('roleResultsArea');
   resultsArea.innerHTML = '<div class="suggest-status">Searching…</div>';
 
   // Build role-scoped API calls
   const tasks = [];
 
-  // Always try Wikipedia for a person photo, runs in parallel with role searches
-  tasks.push((async () => { _foundAvatar = await _fetchWikipediaAvatar(query); })());
+  // Always try Wikipedia for person info, runs in parallel with role searches
+  tasks.push((async () => { _foundWiki = await _fetchWikipediaInfo(query); })());
 
   if (_formRoles.has('podcaster')) {
     tasks.push((async () => {
@@ -2847,9 +2887,11 @@ async function searchPersonByName() {
 
   btn.disabled = false; btn.textContent = '🔍 Search';
 
-  // Auto-fill avatar: Wikipedia photo first, iTunes artwork fallback for podcasters
+  // Auto-fill Wikipedia fields; fall back to iTunes artwork for avatar if Wikipedia had none
   const itunesAvatar = _roleResults.podcaster?.[0]?.avatar || '';
-  _setAvatarPreview(_foundAvatar || itunesAvatar);
+  if (_foundWiki && !_foundWiki.avatar) _foundWiki.avatar = itunesAvatar;
+  else if (!_foundWiki && itunesAvatar) _foundWiki = { avatar: itunesAvatar, description: '', extract: '', wikiUrl: '' };
+  _applyWikipediaFields(_foundWiki);
 
   renderRoleResults(query);
 }
@@ -3049,6 +3091,8 @@ async function addPerson() {
     desc:    document.getElementById('f-desc').value.trim(),
     website: derivedWebsite,
     avatar:  document.getElementById('f-avatar').value.trim(),
+    wikiExtract: _foundWiki?.extract     || '',
+    wikiUrl:     _foundWiki?.wikiUrl     || '',
     feeds: {
       podcast: podcastUrl,
       youtube: ytId,
@@ -3074,7 +3118,7 @@ async function addPerson() {
   _formRoles      = new Set();
   _roleResults    = {};
   _roleSelections = {};
-  _foundAvatar    = '';
+  _foundWiki      = null;
   const _ap = document.getElementById('f-avatar-preview');
   const _al = document.getElementById('f-avatar-label');
   if (_ap) _ap.style.display = 'none';
