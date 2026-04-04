@@ -2996,27 +2996,24 @@ function renderRoleResults(query) {
     </div>`;
   }
 
-  // Writer (books grid)
+  // Writer (compact summary row)
   if (_formRoles.has('writer')) {
     const results = _roleResults.writer || [];
     if (results.length > 0) _roleSelections.writer = query;
     sectionsHtml += `<div class="role-result-section" style="grid-column:1/-1">
-      <div class="role-result-header books-color">📚 Books (Open Library)</div>`;
+      <div class="role-result-header books-color">📚 Writer / Books</div>`;
     if (results.length === 0) {
       sectionsHtml += `<div class="role-no-results">No books found — try a different spelling</div>`;
     } else {
-      sectionsHtml += `<div class="role-books-grid">`;
-      results.forEach(r => {
-        sectionsHtml += `<div class="role-book-card">
-          ${r.thumbnail
-            ? `<img src="${escHtml(r.thumbnail)}" class="role-book-thumb"
-                 onerror="this.style.display='none'">`
-            : ''}
-          <div class="role-book-title">${escHtml(r.label)}</div>
-          <div class="role-result-sub">${escHtml(r.sub || '')}</div>
-        </div>`;
-      });
-      sectionsHtml += `</div>`;
+      const titles = results.slice(0, 3).map(r => escHtml(r.label)).join(' · ');
+      const more   = results.length > 3 ? ` +${results.length - 3} more` : '';
+      sectionsHtml += `<div class="role-result-row selected" style="cursor:default">
+        <span class="role-result-dot"></span>
+        <span class="role-result-title">
+          ${results.length} book${results.length !== 1 ? 's' : ''} found on Open Library
+          <br><span class="role-result-sub">${titles}${escHtml(more)}</span>
+        </span>
+      </div>`;
     }
     sectionsHtml += `<input class="inline-override-input" id="override-books"
         placeholder="↳ or paste Open Library / Goodreads author URL…">
