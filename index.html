@@ -1220,7 +1220,11 @@
         </div>
         <div class="form-row" style="margin:0">
           <label>Website <span style="color:var(--muted);font-weight:400">(optional)</span></label>
-          <input type="text" id="f-website" placeholder="https://lexfridman.com">
+          <input type="text" id="f-website" placeholder="https://tim.blog">
+        </div>
+        <div class="form-row" style="margin:0">
+          <label>Wikipedia Page <span style="color:var(--muted);font-weight:400">(auto-filled)</span></label>
+          <input type="text" id="f-wikiurl" placeholder="https://en.wikipedia.org/wiki/…">
         </div>
         <div class="form-row" style="margin:0">
           <label>Topics / Tags <span style="color:var(--muted);font-weight:400">(Enter or comma)</span></label>
@@ -2285,14 +2289,18 @@ function renderPersonDetail() {
             ${person.website ? `<a href="${escHtml(person.website)}" target="_blank" rel="noopener"
               style="color:var(--accent);font-size:10px;margin-left:6px;text-decoration:none" title="Open website">🌐</a>` : ''}
           </div>
-          <input class="detail-input" id="df-website" value="${escHtml(person.website||'')}" placeholder="https://lexfridman.com">
+          <input class="detail-input" id="df-website" value="${escHtml(person.website||'')}" placeholder="https://tim.blog">
+        </div>
+        <div class="detail-field">
+          <div class="detail-lbl">Wikipedia Page
+            ${person.wikiUrl ? `<a href="${escHtml(person.wikiUrl)}" target="_blank" rel="noopener"
+              style="color:var(--accent);font-size:10px;margin-left:6px;text-decoration:none" title="Open Wikipedia page">↗</a>` : ''}
+          </div>
+          <input class="detail-input" id="df-wikiurl" value="${escHtml(person.wikiUrl||'')}" placeholder="https://en.wikipedia.org/wiki/…">
         </div>
         ${person.wikiExtract ? `
         <div class="detail-field">
-          <div class="detail-lbl">Wikipedia Bio
-            ${person.wikiUrl ? `<a href="${escHtml(person.wikiUrl)}" target="_blank" rel="noopener"
-              style="color:var(--accent);font-size:10px;margin-left:6px;text-decoration:none" title="Open Wikipedia page">↗ Wikipedia</a>` : ''}
-          </div>
+          <div class="detail-lbl">Wikipedia Bio</div>
           <div class="detail-wiki-extract" title="Click to expand"
                onclick="this.classList.toggle('expanded')">${escHtml(person.wikiExtract)}</div>
         </div>` : ''}
@@ -2412,6 +2420,7 @@ async function savePersonDetail() {
   p.name           = document.getElementById('df-name')?.value.trim()        || p.name;
   p.desc           = document.getElementById('df-desc')?.value.trim()        || '';
   p.website        = document.getElementById('df-website')?.value.trim()     || '';
+  p.wikiUrl        = document.getElementById('df-wikiurl')?.value.trim()     || '';
   p.transcriptsUrl = document.getElementById('df-transcripts')?.value.trim() || '';
   p.avatar         = document.getElementById('df-avatar')?.value.trim()      || '';
   p.tags   = [..._detailFormTags];
@@ -2574,10 +2583,10 @@ function _applyWikipediaFields(wiki) {
   if (descField && !descField.value.trim() && wiki.description) {
     descField.value = wiki.description;
   }
-  // Website — auto-fill with Wikipedia URL if blank
-  const webField = document.getElementById('f-website');
-  if (webField && !webField.value.trim() && wiki.wikiUrl) {
-    webField.value = wiki.wikiUrl;
+  // Wikipedia Page — auto-fill dedicated field
+  const wikiField = document.getElementById('f-wikiurl');
+  if (wikiField && !wikiField.value.trim() && wiki.wikiUrl) {
+    wikiField.value = wiki.wikiUrl;
   }
 }
 
@@ -3096,21 +3105,15 @@ async function addPerson() {
     }
   }
 
-  // Auto-derive website from podcast RSS URL if not filled in
-  const websiteInput = document.getElementById('f-website')?.value.trim() || '';
-  const derivedWebsite = websiteInput || (() => {
-    try { const u = new URL(podcastUrl); return u.origin; } catch(_) { return ''; }
-  })();
-
   const person = {
     id:   name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now(),
     name,
     type:    _addType,
     desc:    document.getElementById('f-desc').value.trim(),
-    website: derivedWebsite,
+    website: document.getElementById('f-website')?.value.trim() || '',
     avatar:  document.getElementById('f-avatar').value.trim(),
-    wikiExtract: _foundWiki?.extract     || '',
-    wikiUrl:     _foundWiki?.wikiUrl     || '',
+    wikiExtract: _foundWiki?.extract || '',
+    wikiUrl:     document.getElementById('f-wikiurl')?.value.trim() || _foundWiki?.wikiUrl || '',
     feeds: {
       podcast: podcastUrl,
       youtube: ytId,
@@ -3126,7 +3129,7 @@ async function addPerson() {
 
   persons.unshift(person);
   saveState();
-  ['f-name','f-desc','f-website','f-avatar','f-podcast','f-youtube','f-twitter','f-blog','f-books'].forEach(id => {
+  ['f-name','f-desc','f-website','f-wikiurl','f-avatar','f-podcast','f-youtube','f-twitter','f-blog','f-books'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
