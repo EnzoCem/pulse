@@ -178,6 +178,135 @@
     font-size: 14px; flex-shrink: 0;
   }
 
+  /* ── ADD PERSON — ROLE CHIPS ── */
+  .role-chip-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .role-chip {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text);
+    text-align: left;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .role-chip:hover { border-color: var(--accent); }
+  .role-chip.checked {
+    border-color: var(--accent);
+    background: rgba(232,200,74,0.06);
+  }
+  .role-dot {
+    width: 12px; height: 12px; flex-shrink: 0;
+    border: 1.5px solid var(--border);
+    border-radius: 2px;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .role-chip.checked .role-dot {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .twitter-hint {
+    font-size: 10px; color: var(--muted);
+    margin-top: 6px; margin-bottom: 2px;
+  }
+
+  /* ── ADD PERSON — ROLE RESULTS ── */
+  .role-results-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin: 14px 0 6px;
+  }
+  .role-result-section { display: flex; flex-direction: column; gap: 4px; }
+  .role-result-header {
+    font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+  .podcast-color { color: var(--podcast); }
+  .youtube-color { color: var(--youtube); }
+  .blog-color    { color: var(--blog); }
+  .books-color   { color: #c084fc; }
+
+  .role-result-row {
+    display: flex; align-items: flex-start; gap: 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 7px 9px;
+    cursor: pointer;
+    transition: border-color 0.12s;
+  }
+  .role-result-row:hover { border-color: var(--accent); }
+  .role-result-row.selected { border-color: var(--accent); background: rgba(232,200,74,0.04); }
+  .role-result-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    border: 1.5px solid var(--muted);
+    flex-shrink: 0; margin-top: 3px;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .role-result-row.selected .role-result-dot {
+    background: var(--accent); border-color: var(--accent);
+  }
+  .role-result-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--text); line-height: 1.4;
+  }
+  .role-result-sub { font-size: 10px; color: var(--muted); }
+  .role-no-results { font-size: 11px; color: var(--muted); padding: 6px 0; font-style: italic; }
+
+  .inline-override-input {
+    background: var(--bg);
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 6px 9px;
+    width: 100%; box-sizing: border-box;
+    margin-top: 2px;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .inline-override-input:focus {
+    outline: none; border-color: var(--accent); color: var(--text);
+  }
+  .inline-override-input::placeholder { color: var(--muted); }
+
+  /* Books grid inside results */
+  .role-books-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .role-book-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 7px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+  }
+  .role-book-thumb {
+    width: 100%; aspect-ratio: 2/3;
+    object-fit: cover; border-radius: 2px;
+    margin-bottom: 5px;
+  }
+  .role-book-title { color: var(--text); font-size: 10px; line-height: 1.3; margin-bottom: 2px; }
+
+  @media (max-width: 560px) {
+    .role-results-grid { grid-template-columns: 1fr; }
+    .role-books-grid   { grid-template-columns: repeat(2, 1fr); }
+  }
+
   .form-actions { display: flex; gap: 10px; justify-content: flex-end; }
   .btn {
     border: none; cursor: pointer; border-radius: 4px;
