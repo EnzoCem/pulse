@@ -53,6 +53,7 @@ Pulse/
     books:     string,        // optional Google Books search query override
   },
   tags:        string[],      // person-level topics for TOPICS filter bar
+  roles:       string[],      // UI-only hint: ['podcaster','youtuber','blogger','writer'] — set at Add Person time
   itunesId:    number|null,   // iTunes collection ID (enables full episode history)
   entries:     Entry[],       // max 20, sorted newest first
   lastUpdated: string|null,   // ISO 8601
@@ -115,8 +116,13 @@ Pulse/
 | `switchView('people'\|'timeline'\|'person')` | Toggle between main views |
 | `openPersonDetail(personId)` | Open person detail/edit panel |
 | `savePersonDetail()` | Save edits from detail panel, re-fetch |
-| `addPerson()` | Read form, create person object, save, fetch |
+| `addPerson()` | Read role selections + override inputs (person mode) or feed URL fields (source mode), create person object, save, fetch |
 | `deletePerson(id)` | Remove person from state and DOM |
+| `searchPersonByName()` | Source mode: unchanged (YouTube + RSS auto-detect). Person mode: role-scoped parallel API calls via `Promise.allSettled`, then `renderRoleResults()` |
+| `renderRoleResults(query)` | Render search results per role into `#roleResultsArea` — auto-selects top result, shows inline override input per role |
+| `selectRoleResult(role, idx)` | Switch selected result for a role; updates `_roleSelections[role]` and toggles `.selected` CSS |
+| `toggleRole(role)` | Toggle a role chip checked state; updates `_formRoles` Set and calls `_updateSearchBtn()` |
+| `_updateSearchBtn()` | Enable/disable Search button: source mode requires name only; person mode requires name + at least one role |
 | `resolveYouTubeChannelId(raw)` | Resolve @handle/URL/username to UC… channel ID |
 | `_findSourceRSS(name)` | Auto-discover RSS feed for a publication by name |
 | `_looksLikeRssUrl(url)` | Returns true for RSS URLs AND bare @username Twitter handles |
@@ -154,6 +160,30 @@ Fonts: Playfair Display (headings/names), JetBrains Mono (UI/labels), Libre Bask
 - **`entryTags`** — episode/entry-level tags set inside the entry modal. These are NOT shown in TOPICS and do not affect the TOPICS filter. They are separate per-episode annotations.
 - **TOPICS filter** — filters `renderAllCards()` to persons whose `p.tags` includes `activeTag`. Entry-level tags do not affect this filter.
 - **Global tag operations** — `renameGlobalTag` and `removeGlobalTag` operate only on `person.tags` (and `entryTags` for removal to keep data clean).
+
+---
+
+## Add Person flow (person mode)
+
+The Add Person panel has two modes toggled at the top:
+
+**Person mode (default):**
+1. Type a name — Search button is disabled until at least one role is also checked
+2. Check role chips: 🎙 Podcaster / ▶ YouTuber / ✍ Blogger / 📚 Writer (any combination)
+3. Hit Search — each checked role fires its API call in parallel (`Promise.allSettled`)
+4. Results panel appears with auto-selected top match per role + inline "or paste URL" override
+5. Optionally click a different result to override, or paste a URL directly
+6. Fill optional Description / Avatar / Topics fields
+7. Click "✓ Add {Name}"
+
+Runtime state (cleared on panel open/close):
+- `_formRoles` — `Set<string>` of currently checked roles
+- `_roleResults` — `{ podcaster: [...], youtuber: [...], writer: [...], blogger: [] }` from API
+- `_roleSelections` — `{ podcaster: 0, youtuber: 0, writer: 'query-string' }` — selected index per role
+
+**Source mode:** unchanged from before — shows feed URL inputs, auto-detects YouTube + RSS by name.
+
+**X/Twitter:** Not a role chip. Always added manually via card ✎ edit after person is created.
 
 ---
 

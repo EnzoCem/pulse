@@ -25,8 +25,8 @@ All data is persisted in `localStorage`. Nothing is sent to any server except op
 ## How to use
 
 1. Open `index.html` in any browser (double-click, or run `python3 -m http.server 5500` then open `http://localhost:5500`)
-2. Click **+ Add Person**, type a name (or paste an Apple Podcasts URL), and hit **🔍 Search** — feeds are auto-detected from iTunes, YouTube, and blog patterns
-3. Review the auto-filled fields, adjust if needed, click **Add Person**
+2. Click **+ Add Person**, type a name, check the roles that apply (🎙 Podcaster / ▶ YouTuber / ✍ Blogger / 📚 Writer), then hit **🔍 Search** — feeds are auto-discovered per role in parallel
+3. Results appear with the top match auto-selected per role; pick a different result or paste a URL override if needed, then click **✓ Add {Name}**
 4. Hit **↻** on a card or **Refresh All** in the bottom bar to fetch content
 
 ---
@@ -210,6 +210,7 @@ RSS feeds are fetched through a chain of three public CORS proxies, tried in ord
     books:     string,        // optional Google Books search query override (blank = person name)
   },
   tags:        string[],      // topics for filtering
+  roles:       string[],      // UI hint: ['podcaster','youtuber','blogger','writer']
   itunesId:    number|null,   // iTunes collection ID (enables full episode history)
   entries:     Entry[],       // max 20, sorted newest first
   lastUpdated: string|null,   // ISO 8601
@@ -273,6 +274,7 @@ RSS feeds are fetched through a chain of three public CORS proxies, tried in ord
 - [x] Person-level topic tags with TOPICS filter bar (rename/remove globally)
 - [x] Website field on person/source profiles
 - [x] Stale-while-revalidate background refresh — feeds older than 6 hours auto-refresh on page load and card open, with pulsing badge indicator
+- [x] Role-based Add Person flow — role checkboxes (Podcaster / YouTuber / Blogger / Writer) drive parallel auto-search; top result auto-selected with inline paste override per role
 
 ### Planned
 - [ ] Auto-refresh on a fixed interval (e.g. every N minutes) with configurable timer and visual countdown
