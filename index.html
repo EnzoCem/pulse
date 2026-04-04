@@ -839,14 +839,33 @@
   }
   .detail-feeds { margin-bottom: 28px; }
   .detail-feed-row {
-    display: grid; grid-template-columns: 100px 1fr; gap: 8px;
+    display: grid; grid-template-columns: 10px 18px 100px 1fr; gap: 8px;
     align-items: center; margin-bottom: 8px;
   }
   .detail-feed-lbl {
     font-family: 'JetBrains Mono', monospace; font-size: 11px;
     color: var(--muted); display: flex; align-items: center; gap: 5px;
   }
-  .detail-feed-error { color: #e84a4a; font-size: 10px; margin-left: 4px; cursor: help; }
+  /* Status dot */
+  .feed-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    transition: background 0.2s;
+  }
+  .feed-dot.dot-green  { background: #4ae880; }
+  .feed-dot.dot-red    { background: #e84a4a; }
+  .feed-dot.dot-yellow { background: #e8c84a; }
+  .feed-dot.dot-grey   { background: #3a3a45; border: 1px solid #4a4a55; }
+  .feed-dot.dot-none   { background: transparent; }
+  /* Enable/disable toggle checkbox */
+  .feed-toggle {
+    width: 13px; height: 13px; cursor: pointer;
+    accent-color: var(--accent); flex-shrink: 0;
+  }
+  /* Disabled feed row — gray out label and input */
+  .detail-feed-row.feed-disabled .detail-feed-lbl { opacity: 0.4; }
+  .detail-feed-row.feed-disabled .detail-input {
+    opacity: 0.3; pointer-events: none; text-decoration: line-through;
+  }
   .detail-feed-warn  { color: #e8c84a; font-size: 10px; margin-left: 4px; cursor: help; font-family: 'JetBrains Mono', monospace; }
   .detail-save-row { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
   .detail-save-btn {
@@ -2326,18 +2345,36 @@ function renderPersonDetail() {
     { key: 'blog',    label: '✍ Blog',         ph: 'RSS or Atom feed URL' },
     { key: 'books',   label: '📚 Books',        ph: 'Search query (blank = auto from name)' },
   ].map(f => {
-    const val = person.feeds[f.key] || '';
-    // Red ⚠ = last fetch actually failed; Amber ⚠ = URL doesn't look like RSS at all
-    const fetchFailed = failedFeeds.includes(f.key);
-    const notRss      = val && f.key === 'twitter' && !_looksLikeRssUrl(val);
-    const indicator   = fetchFailed
-      ? `<span class="detail-feed-error" title="Last fetch failed — check the URL">⚠</span>`
-      : notRss
+    const val        = person.feeds[f.key] || '';
+    const enabled    = person.feedsEnabled?.[f.key] !== false;
+    const failed     = failedFeeds.includes(f.key);
+    const hasEntries = (person.entries || []).some(e => e.platform === f.key);
+    const fetched    = !!person.lastUpdated;
+    const notRss     = val && f.key === 'twitter' && !_looksLikeRssUrl(val);
+
+    // Status dot: green=OK, red=failed, yellow=empty, grey=never fetched, none=no URL
+    let dotClass = 'dot-none', dotTitle = '';
+    if (val && enabled) {
+      if (!fetched)        { dotClass = 'dot-grey';   dotTitle = 'Not yet fetched'; }
+      else if (failed)     { dotClass = 'dot-red';    dotTitle = 'Last fetch failed — check URL'; }
+      else if (hasEntries) { dotClass = 'dot-green';  dotTitle = 'Feed OK'; }
+      else                 { dotClass = 'dot-yellow'; dotTitle = 'Fetched OK but returned no entries'; }
+    } else if (val && !enabled) {
+      dotClass = 'dot-grey'; dotTitle = 'Feed disabled';
+    }
+
+    const warnHtml = notRss
       ? `<span class="detail-feed-warn" title="This looks like a profile URL, not an RSS feed. Use rss.app to get an RSS URL for X/Twitter.">⚠ not RSS</span>`
       : '';
+
     return `
-      <div class="detail-feed-row">
-        <label class="detail-feed-lbl" for="df-${f.key}">${f.label}${indicator}</label>
+      <div class="detail-feed-row${!enabled ? ' feed-disabled' : ''}" id="feed-row-${f.key}">
+        <span class="feed-dot ${dotClass}" title="${dotTitle}"></span>
+        <input type="checkbox" class="feed-toggle" id="df-toggle-${f.key}"
+               ${enabled ? 'checked' : ''}
+               title="${enabled ? 'Disable this feed' : 'Enable this feed'}"
+               onchange="toggleFeedEnabled('${person.id}','${f.key}',this.checked)">
+        <label class="detail-feed-lbl" for="df-${f.key}">${f.label}${warnHtml}</label>
         <input class="detail-input" id="df-${f.key}" type="text"
                value="${escHtml(val)}" placeholder="${f.ph}">
       </div>`;
@@ -2520,6 +2557,19 @@ function renderDetailTagChips() {
   }).join('');
 }
 
+// Called immediately when a feed toggle checkbox is clicked — gives instant visual feedback
+// without requiring the user to hit Save Changes first.
+function toggleFeedEnabled(personId, feedKey, enabled) {
+  const person = persons.find(p => p.id === personId);
+  if (!person) return;
+  if (!person.feedsEnabled) person.feedsEnabled = {};
+  person.feedsEnabled[feedKey] = enabled;
+  saveState();
+  // Update row appearance immediately
+  const row = document.getElementById(`feed-row-${feedKey}`);
+  if (row) row.classList.toggle('feed-disabled', !enabled);
+}
+
 async function savePersonDetail() {
   if (!currentPerson) return;
   const p   = currentPerson;
@@ -2537,6 +2587,13 @@ async function savePersonDetail() {
   p.feeds.blog    = document.getElementById('df-blog')?.value.trim()    || '';
   p.feeds.twitter = document.getElementById('df-twitter')?.value.trim() || '';
   p.feeds.books   = document.getElementById('df-books')?.value.trim()   || '';
+
+  // Persist the enabled/disabled state of each feed (checkboxes in feed rows)
+  if (!p.feedsEnabled) p.feedsEnabled = {};
+  ['podcast', 'youtube', 'twitter', 'blog', 'books'].forEach(key => {
+    const cb = document.getElementById(`df-toggle-${key}`);
+    if (cb) p.feedsEnabled[key] = cb.checked;
+  });
 
   // Resolve YouTube: accepts URL, @handle, username, or raw channel ID
   const ytRaw = document.getElementById('df-youtube')?.value.trim() || '';
@@ -3619,24 +3676,29 @@ async function _fetchPersonCore(person) {
   const ytId = person.feeds.youtube;
   const ytValid = ytId && /^UC[a-zA-Z0-9_-]{21,22}$/.test(ytId);
 
+  // Helper: true when a feed is not explicitly disabled (default = enabled)
+  const feedOn = key => person.feedsEnabled?.[key] !== false;
+
   const tasks = [];
 
   if (person.type === 'source') {
-    if (ytValid)                tasks.push(pull(`https://www.youtube.com/feeds/videos.xml?channel_id=${ytId}`, 'youtube'));
-    if (person.feeds.podcast)   tasks.push(pull(person.feeds.podcast, 'blog'));
-    if (person.feeds.blog)      tasks.push(pull(person.feeds.blog,    'blog'));
+    if (ytValid && feedOn('youtube'))              tasks.push(pull(`https://www.youtube.com/feeds/videos.xml?channel_id=${ytId}`, 'youtube'));
+    if (person.feeds.podcast && feedOn('podcast')) tasks.push(pull(person.feeds.podcast, 'blog'));
+    if (person.feeds.blog    && feedOn('blog'))    tasks.push(pull(person.feeds.blog,    'blog'));
   } else {
-    if (ytValid)              tasks.push(pull(`https://www.youtube.com/feeds/videos.xml?channel_id=${ytId}`, 'youtube'));
-    if (person.feeds.podcast) tasks.push(pull(person.feeds.podcast, 'podcast'));
-    if (person.feeds.blog)    tasks.push(pull(person.feeds.blog,    'blog'));
+    if (ytValid && feedOn('youtube'))              tasks.push(pull(`https://www.youtube.com/feeds/videos.xml?channel_id=${ytId}`, 'youtube'));
+    if (person.feeds.podcast && feedOn('podcast')) tasks.push(pull(person.feeds.podcast, 'podcast'));
+    if (person.feeds.blog    && feedOn('blog'))    tasks.push(pull(person.feeds.blog,    'blog'));
   }
 
   // Books: query Google Books API (uses feeds.books override or falls back to person name)
-  const booksQuery = (person.feeds.books || '').trim() || person.name;
-  tasks.push(fetchBooks(booksQuery, person.id).then(e => newEntries.push(...e)));
+  if (feedOn('books')) {
+    const booksQuery = (person.feeds.books || '').trim() || person.name;
+    tasks.push(fetchBooks(booksQuery, person.id).then(e => newEntries.push(...e)));
+  }
 
   // Twitter: only fetch if it looks like an RSS feed URL (e.g. rss.app)
-  if (person.feeds.twitter && _looksLikeRssUrl(person.feeds.twitter)) {
+  if (person.feeds.twitter && _looksLikeRssUrl(person.feeds.twitter) && feedOn('twitter')) {
     tasks.push(pull(person.feeds.twitter, 'twitter'));
   }
 
