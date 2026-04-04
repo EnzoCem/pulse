@@ -216,6 +216,17 @@
     font-size: 10px; color: var(--muted);
     margin-top: 6px; margin-bottom: 2px;
   }
+  .add-person-meta {
+    display: flex; gap: 16px; align-items: flex-start;
+    margin: 14px 0 10px;
+  }
+  .add-avatar-col {
+    display: flex; flex-direction: column; align-items: center;
+    flex-shrink: 0; width: 90px;
+  }
+  .add-avatar-col input[type="text"] {
+    width: 100%; text-align: center;
+  }
 
   /* ── ADD PERSON — ROLE RESULTS ── */
   .role-results-grid {
@@ -1189,6 +1200,35 @@
       <div class="twitter-hint">💡 X / Twitter: add via ✎ edit after the person is created</div>
     </div>
 
+    <!-- Description + Avatar + Tags — shown right after role chips -->
+    <div class="add-person-meta">
+      <!-- Avatar preview (large) + URL input -->
+      <div class="add-avatar-col">
+        <img id="f-avatar-preview" src="" alt=""
+             style="display:none;width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--accent);margin-bottom:8px"
+             onerror="this.style.display='none'">
+        <div id="f-avatar-placeholder" style="width:80px;height:80px;border-radius:50%;border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;margin-bottom:8px;font-size:28px;color:var(--border)">👤</div>
+        <label id="f-avatar-label" style="font-size:9px;text-align:center;display:block">Avatar URL</label>
+        <input type="text" id="f-avatar" placeholder="https://…" style="font-size:10px;margin-top:4px"
+               oninput="_setAvatarPreview()">
+      </div>
+      <!-- Description + Tags stacked -->
+      <div style="flex:1;display:flex;flex-direction:column;gap:10px">
+        <div class="form-row" style="margin:0">
+          <label>Description</label>
+          <input type="text" id="f-desc" placeholder="e.g. Author, investor…">
+        </div>
+        <div class="form-row" style="margin:0">
+          <label>Topics / Tags <span style="color:var(--muted);font-weight:400">(Enter or comma)</span></label>
+          <div class="tag-input-wrap" id="tagInputWrap" onclick="document.getElementById('f-tag-input').focus()">
+            <div id="tagChipsContainer" style="display:contents"></div>
+            <input id="f-tag-input" type="text" placeholder="e.g. consciousness, biology…"
+                   onkeydown="handleTagKeydown(event)">
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Dynamic results (role search results + inline overrides) — PERSON mode -->
     <div id="roleResultsArea"></div>
 
@@ -1237,33 +1277,6 @@
       </div>
     </div>
 
-    <!-- Optional details (both modes) -->
-    <div class="form-grid" style="margin-top:12px">
-      <div class="form-row">
-        <label>Description</label>
-        <input type="text" id="f-desc" placeholder="e.g. Author, investor…">
-      </div>
-      <div class="form-row">
-        <label id="f-avatar-label">Avatar URL (optional)</label>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input type="text" id="f-avatar" placeholder="https://…" style="flex:1"
-                 oninput="_setAvatarPreview()">
-          <img id="f-avatar-preview" src="" alt=""
-               style="display:none;width:36px;height:36px;border-radius:50%;object-fit:cover;border:1px solid var(--border);flex-shrink:0"
-               onerror="this.style.display='none'">
-        </div>
-      </div>
-    </div>
-
-    <!-- Tags (both modes) -->
-    <div class="form-row" style="margin-bottom:12px">
-      <label>Topics / Tags <span style="color:var(--muted);font-weight:400">(Enter or comma to add)</span></label>
-      <div class="tag-input-wrap" id="tagInputWrap" onclick="document.getElementById('f-tag-input').focus()">
-        <div id="tagChipsContainer" style="display:contents"></div>
-        <input id="f-tag-input" type="text" placeholder="e.g. consciousness, biology…"
-               onkeydown="handleTagKeydown(event)">
-      </div>
-    </div>
 
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="toggleAddPanel()">Cancel</button>
@@ -2455,9 +2468,11 @@ function toggleAddPanel() {
     });
     // Reset avatar preview
     const avatarPreview = document.getElementById('f-avatar-preview');
+    const avatarPlaceholder = document.getElementById('f-avatar-placeholder');
     const avatarLabel   = document.getElementById('f-avatar-label');
-    if (avatarPreview) avatarPreview.style.display = 'none';
-    if (avatarLabel)   avatarLabel.textContent = 'Avatar URL (optional)';
+    if (avatarPreview)     avatarPreview.style.display = 'none';
+    if (avatarPlaceholder) avatarPlaceholder.style.display = '';
+    if (avatarLabel)       avatarLabel.textContent = 'Avatar URL';
     _formTags = []; renderFormTagChips();
     // Reset Add button label
     const addBtn = document.getElementById('addPersonBtn');
@@ -2530,21 +2545,20 @@ async function _fetchWikipediaInfo(name) {
 }
 
 function _setAvatarPreview(url) {
-  const field   = document.getElementById('f-avatar');
-  const preview = document.getElementById('f-avatar-preview');
-  const label   = document.getElementById('f-avatar-label');
+  const field       = document.getElementById('f-avatar');
+  const preview     = document.getElementById('f-avatar-preview');
+  const placeholder = document.getElementById('f-avatar-placeholder');
+  const label       = document.getElementById('f-avatar-label');
   if (field && !field.value.trim() && url) {
     field.value = url;
     if (label) label.textContent = 'Avatar URL (auto-filled)';
   }
+  const hasUrl = field?.value.trim();
   if (preview) {
-    if (field?.value.trim()) {
-      preview.src = field.value.trim();
-      preview.style.display = '';
-    } else {
-      preview.style.display = 'none';
-    }
+    if (hasUrl) { preview.src = hasUrl; preview.style.display = ''; }
+    else          preview.style.display = 'none';
   }
+  if (placeholder) placeholder.style.display = hasUrl ? 'none' : '';
 }
 
 function _applyWikipediaFields(wiki) {
@@ -3119,10 +3133,12 @@ async function addPerson() {
   _roleResults    = {};
   _roleSelections = {};
   _foundWiki      = null;
-  const _ap = document.getElementById('f-avatar-preview');
-  const _al = document.getElementById('f-avatar-label');
-  if (_ap) _ap.style.display = 'none';
-  if (_al) _al.textContent = 'Avatar URL (optional)';
+  const _ap  = document.getElementById('f-avatar-preview');
+  const _aph = document.getElementById('f-avatar-placeholder');
+  const _al  = document.getElementById('f-avatar-label');
+  if (_ap)  _ap.style.display  = 'none';
+  if (_aph) _aph.style.display = '';
+  if (_al)  _al.textContent    = 'Avatar URL';
   ['podcaster','youtuber','blogger','writer'].forEach(r => {
     document.getElementById('role-' + r)?.classList.remove('checked');
   });
