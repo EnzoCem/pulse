@@ -3697,11 +3697,13 @@ async function fetchRSS(url, platform, personId, _redirected = false) {
     // CORS blocked or network error — fall through to proxies
   }
 
+  const isXml = t => t && t.trimStart().startsWith('<') && !t.includes('<html');
+
   // Step 2: corsproxy.io (returns raw content)
   if (!xml) {
     try {
       const resp = await timedFetch(CORS_PRIMARY + encodeURIComponent(url), 7000);
-      if (resp.ok) xml = await resp.text();
+      if (resp.ok) { const t = await resp.text(); if (isXml(t)) xml = t; }
     } catch(e) {
       console.warn('Primary proxy failed, trying fallback:', url, e.message);
     }
@@ -3711,7 +3713,7 @@ async function fetchRSS(url, platform, personId, _redirected = false) {
   if (!xml) {
     try {
       const resp = await timedFetch(CORS_FALLBACK + encodeURIComponent(url), 7000);
-      if (resp.ok) xml = await resp.text();
+      if (resp.ok) { const t = await resp.text(); if (isXml(t)) xml = t; }
     } catch(e) {
       console.warn('Fallback proxy also failed:', url, e.message);
     }
@@ -3721,9 +3723,20 @@ async function fetchRSS(url, platform, personId, _redirected = false) {
   if (!xml) {
     try {
       const resp = await timedFetch(CORS_FALLBACK2 + encodeURIComponent(url), 7000);
-      if (resp.ok) xml = await resp.text();
+      if (resp.ok) { const t = await resp.text(); if (isXml(t)) xml = t; }
     } catch(e) {
       console.warn('Codetabs proxy also failed:', url, e.message);
+    }
+  }
+
+  // Step 5: if still no XML, try all proxies a second time accepting any non-empty content
+  // (some feeds return JSON or non-standard XML — give autodiscovery a chance)
+  if (!xml) {
+    for (const proxy of [CORS_PRIMARY, CORS_FALLBACK, CORS_FALLBACK2]) {
+      try {
+        const resp = await timedFetch(proxy + encodeURIComponent(url), 7000);
+        if (resp.ok) { const t = await resp.text(); if (t && t.length > 50) { xml = t; break; } }
+      } catch(e) { /* silent */ }
     }
   }
 
