@@ -2080,7 +2080,7 @@ async function loadYouTubeTranscript() {
 
   btn.disabled = true;
   btn.textContent = '⏳ Loading…';
-  area.innerHTML = '<div class="transcript-loading">Fetching transcript from YouTube…</div>';
+  area.innerHTML = '<div class="transcript-loading">Fetching transcript…</div>';
 
   const videoId = extractYouTubeId(_currentModalEntry.link || '');
   if (!videoId) {
@@ -2089,6 +2089,40 @@ async function loadYouTubeTranscript() {
     return;
   }
 
+  // ── Path A: backend (youtube-transcript-api) ──────────────────────────────
+  // Faster, more reliable, handles auto-generated captions cleanly.
+  if (pwConfig.backendUrl) {
+    try {
+      const base = (pwConfig.backendUrl || 'http://localhost:5001').replace(/\/$/, '');
+      const resp = await fetch(`${base}/api/transcript/${videoId}`,
+        { signal: AbortSignal.timeout(20000) });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.transcript) {
+          area.innerHTML = `
+            <div class="transcript-label">
+              Transcript ${data.auto ? '<span style="color:var(--muted)">(auto-generated)</span>' : ''}
+              — ${data.segments} segments · via backend
+            </div>
+            <div class="transcript-body">${escHtml(data.transcript)}</div>`;
+          btn.textContent = '📄 Transcript ✓';
+          return;
+        }
+        if (data.error === 'NO_CAPTIONS') throw Object.assign(new Error('NO_CAPTIONS'), { noFallback: true });
+        // Any other backend error → fall through to CORS scrape
+      }
+    } catch(e) {
+      if (e.noFallback) {
+        area.innerHTML = '<div class="transcript-loading">No captions available for this video.</div>';
+        btn.disabled = false; btn.textContent = '📄 Load Transcript';
+        return;
+      }
+      // Backend unavailable or timed out — fall through to CORS scrape
+      area.innerHTML = '<div class="transcript-loading">Backend unavailable, trying direct fetch…</div>';
+    }
+  }
+
+  // ── Path B: CORS proxy scrape (no backend / backend failed) ───────────────
   try {
     // Step 1: fetch the video page to extract the caption track URL
     const pageUrl  = `https://www.youtube.com/watch?v=${videoId}`;
@@ -2123,7 +2157,6 @@ async function loadYouTubeTranscript() {
 
     if (!segs.length) throw new Error('NO_CAPTIONS');
 
-    // Group into ~paragraph chunks (every 15 segments ≈ ~45 seconds each)
     const paras = [];
     for (let i = 0; i < segs.length; i += 15) paras.push(segs.slice(i, i+15).join(' '));
     const text = paras.join('\n\n');
