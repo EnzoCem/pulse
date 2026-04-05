@@ -1577,6 +1577,48 @@
     </div>
   </div>
 
+  <!-- ADD ARTICLE MODAL -->
+  <div id="addArticleOverlay" style="display:none;position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.7);align-items:center;justify-content:center">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:24px;width:440px;max-width:calc(100vw - 32px);box-shadow:0 8px 32px rgba(0,0,0,.5)">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:16px">ADD ARTICLE</div>
+
+      <div style="margin-bottom:12px">
+        <div style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-bottom:4px">TITLE *</div>
+        <input id="aa-title" type="text" placeholder="Article title…"
+               style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:6px 8px;outline:none"
+               onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+
+      <div style="margin-bottom:12px">
+        <div style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-bottom:4px">DATE</div>
+        <input id="aa-date" type="date"
+               style="background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:6px 8px;outline:none"
+               onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+
+      <div style="margin-bottom:12px">
+        <div style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-bottom:8px">SOURCE</div>
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <button id="aa-src-web" class="btn btn-primary" style="flex:1;font-size:11px" onclick="_aaSetSource('web')">🌐 Web URL</button>
+          <button id="aa-src-calibre" class="btn btn-ghost" style="flex:1;font-size:11px" onclick="_aaSetSource('calibre')">📚 From Calibre</button>
+        </div>
+        <div id="aa-web-area">
+          <input id="aa-url" type="url" placeholder="https://…"
+                 style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:6px 8px;outline:none"
+                 onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+        </div>
+        <div id="aa-calibre-area" style="display:none"></div>
+      </div>
+
+      <div id="aa-error" style="display:none;color:#e84a4a;font-size:11px;margin-bottom:10px;font-family:'JetBrains Mono',monospace"></div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+        <button class="btn btn-ghost" onclick="_closeAddArticleModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveArticle()">✓ Add Article</button>
+      </div>
+    </div>
+  </div>
+
   <!-- TIMELINE VIEW -->
   <div class="view" id="view-timeline">
     <div class="timeline" id="timelineContainer"></div>
@@ -1824,6 +1866,10 @@ const _dbClient = {
   setEpisodeGuests: (episodeId, guests)          => _dbClient._call('PUT',  `/api/db/episodes/${encodeURIComponent(episodeId)}/guests`, { guests }),
   getGuestEpisodes: (guestId, limit=20)          => _dbClient._call('GET',  `/api/db/guests/${guestId}/episodes?limit=${limit}`),
   getCalibreText:   (calibreId)                  => _dbClient._call('GET',  `/api/calibre/text/${encodeURIComponent(calibreId)}`),
+  setCalibreLink:   (entryId, personId, calibreId, calibreTitle, formats, contentType) =>
+    _dbClient._call('PUT', `/api/db/calibre/${encodeURIComponent(entryId)}`,
+      { person_id: personId, calibre_id: calibreId, calibre_title: calibreTitle,
+        formats: JSON.stringify(formats), content_type: contentType }),
 
   // Library
   library:          (params={})                 => {
@@ -2742,6 +2788,8 @@ function renderPersonDetail() {
         <span style="color:var(--muted);font-weight:400;margin-left:6px">(${person.entries?.length || 0} entries)</span>
         <button class="card-refresh-btn" style="margin-left:10px" id="detail-refresh-btn"
           onclick="refreshDetailPerson()" data-tip="Refresh feeds">↻</button>
+        <button class="btn btn-ghost" style="margin-left:8px;font-size:10px;padding:3px 8px;color:var(--article);border-color:var(--article)"
+          onclick="openAddArticleModal('${person.id}')">+ Add Article</button>
       </div>
       <div class="detail-entry-filter">${filterBtns}</div>
       <div id="detail-entry-list">${entryListHtml}</div>
@@ -6504,6 +6552,117 @@ async function _checkAndShowCalibreBtn(entry) {
     btn.style.pointerEvents = 'none';
     btn.title = 'Start Calibre Content Server (Preferences → Sharing → Content Server) and add CORS header: Access-Control-Allow-Origin: *';
   }
+}
+
+// ── Add Article modal ─────────────────────────────────────────────────────────
+
+let _aaPersonId    = null;
+let _aaCalibreBook = null;
+
+function openAddArticleModal(personId) {
+  _aaPersonId    = personId;
+  _aaCalibreBook = null;
+
+  const overlay = document.getElementById('addArticleOverlay');
+  document.getElementById('aa-title').value = '';
+  document.getElementById('aa-date').value  = new Date().toISOString().slice(0, 10);
+  document.getElementById('aa-url').value   = '';
+  document.getElementById('aa-calibre-area').innerHTML = '';
+  document.getElementById('aa-error').style.display    = 'none';
+  _aaSetSource('web');
+  overlay.style.display = 'flex';
+  setTimeout(() => document.getElementById('aa-title').focus(), 50);
+}
+
+function _closeAddArticleModal() {
+  document.getElementById('addArticleOverlay').style.display = 'none';
+  _aaPersonId    = null;
+  _aaCalibreBook = null;
+}
+
+function _aaSetSource(src) {
+  const webBtn     = document.getElementById('aa-src-web');
+  const calibreBtn = document.getElementById('aa-src-calibre');
+  const webArea    = document.getElementById('aa-web-area');
+  const calArea    = document.getElementById('aa-calibre-area');
+  _aaCalibreBook   = null;
+
+  if (src === 'web') {
+    webBtn.className     = 'btn btn-primary';
+    calibreBtn.className = 'btn btn-ghost';
+    webArea.style.display  = '';
+    calArea.style.display  = 'none';
+    calArea.innerHTML      = '';
+  } else {
+    webBtn.className     = 'btn btn-ghost';
+    calibreBtn.className = 'btn btn-primary';
+    webArea.style.display  = 'none';
+    calArea.style.display  = '';
+    openCalibrePicker(calArea, book => {
+      _aaCalibreBook = book;
+      const titleEl = document.getElementById('aa-title');
+      if (!titleEl.value.trim()) titleEl.value = book.title;
+      calArea.innerHTML = `
+        <div style="padding:6px 10px;background:var(--surface2);border:1px solid var(--article);border-radius:4px;font-size:12px">
+          📚 <strong>${escHtml(book.title)}</strong>
+          <span style="color:var(--muted);font-size:10px;margin-left:6px">${escHtml(book.authors)}</span>
+          <button class="btn btn-ghost" style="margin-left:8px;font-size:10px;padding:2px 6px" onclick="_aaSetSource('calibre')">Change</button>
+        </div>`;
+    });
+  }
+}
+
+function saveArticle() {
+  const person = persons.find(p => p.id === _aaPersonId);
+  if (!person) return;
+
+  const title = document.getElementById('aa-title').value.trim();
+  const date  = document.getElementById('aa-date').value.trim();
+  const url   = document.getElementById('aa-url').value.trim();
+  const errEl = document.getElementById('aa-error');
+  errEl.style.display = 'none';
+
+  if (!title) { errEl.textContent = 'Title is required'; errEl.style.display = ''; return; }
+
+  const isCalibre = !!_aaCalibreBook;
+  if (!isCalibre && !url) { errEl.textContent = 'URL is required for web articles'; errEl.style.display = ''; return; }
+
+  let link;
+  if (isCalibre) {
+    const baseUrl = (pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
+    link = `${baseUrl}/browse/book/${_aaCalibreBook.bookId}`;
+  } else {
+    link = url;
+  }
+
+  const entryId = `${person.id}-article-${link}`.slice(0, 80);
+  const entry   = {
+    id:           entryId,
+    personId:     person.id,
+    platform:     'article',
+    title,
+    link,
+    desc:         '',
+    date:         date ? new Date(date).toISOString() : new Date().toISOString(),
+    author:       person.name,
+    transcriptUrl: '',
+    thumbnail:    '',
+  };
+
+  if (!person.entries) person.entries = [];
+  if (!person.entries.some(e => e.id === entryId)) {
+    person.entries.unshift(entry);
+  }
+
+  if (isCalibre && _backendOnline) {
+    _dbClient.setCalibreLink(entryId, person.id, _aaCalibreBook.bookId,
+      _aaCalibreBook.title, _aaCalibreBook.formats, 'article').catch(() => {});
+  }
+
+  saveState();
+  _closeAddArticleModal();
+  renderAllCards();
+  renderPersonDetail();
 }
 
 // ── INIT ──
