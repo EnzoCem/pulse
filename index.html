@@ -2676,8 +2676,10 @@ function renderPersonDetail() {
   if (_detailFilter !== 'all') entries = entries.filter(e => e.platform === _detailFilter);
   entries.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  const filterBtns = ['all', 'podcast', 'youtube', 'twitter', 'blog'].map(f => {
-    if (f !== 'all' && !person.feeds[f]) return '';
+  const hasArticles = (person.entries || []).some(e => e.platform === 'article');
+  const filterBtns = ['all', 'podcast', 'youtube', 'twitter', 'blog', 'article'].map(f => {
+    if (f !== 'all' && f !== 'article' && !person.feeds[f]) return '';
+    if (f === 'article' && !hasArticles) return '';
     const active = _detailFilter === f;
     const pl = f === 'all' ? null : PLATFORMS[f];
     const dot = pl ? `<span style="width:7px;height:7px;border-radius:50%;background:${pl.color};display:inline-block;margin-right:4px"></span>` : '';
