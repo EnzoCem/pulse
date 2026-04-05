@@ -5471,6 +5471,60 @@ function buildPersonNote(person) {
   return frontmatter + '\n\n' + body;
 }
 
+// ── LLM WIKI ──
+
+function buildWikiUpdatePrompt(entry, person, transcript, existingIndex, existingLog) {
+  const personName = person.name || 'Unknown';
+  const safeFolder = sanitizeFileName(personName);
+  const epDate     = entry.date
+    ? new Date(entry.date).toISOString().slice(0, 10)
+    : new Date().toISOString().slice(0, 10);
+  const indexPath  = `${safeFolder}/index.md`;
+  const logPath    = `${safeFolder}/log.md`;
+
+  const system = `You maintain a personal knowledge wiki about ${personName} in Obsidian markdown.
+
+You manage two files:
+1. **${indexPath}** — A living synthesis page. Not a list of episode summaries — a structured picture of this person's recurring themes, notable positions, key quotes, and significant guests. When you update it, revise and integrate; do not just append new episode summaries.
+2. **${logPath}** — An append-only chronological log. One entry per ingested episode. Each entry starts with ## [YYYY-MM-DD] Episode Title.
+
+When you process a new transcript:
+- Extract: main topics, notable claims or positions, memorable quotes, guests mentioned or interviewed.
+- Update ${indexPath}: integrate new information into existing themes; add new themes only if genuinely new; note any evolution or contradiction with past positions.
+- Append one new entry to ${logPath}: ## [${epDate}] ${(entry.title || 'Untitled').replace(/`/g, "'")} followed by a 2–3 sentence summary and a tags line like > tags: topic1, topic2.
+
+Output ONLY the updated file contents using this exact format — no commentary, no markdown code fences around the blocks:
+<wiki_file path="${indexPath}">
+...full updated content...
+</wiki_file>
+<wiki_file path="${logPath}">
+...full updated log with new entry appended at the bottom...
+</wiki_file>`;
+
+  const userLines = [
+    `Episode: ${entry.title || 'Untitled'}`,
+    `Date: ${epDate}`,
+    `Platform: ${entry.platform}`,
+    `Person: ${personName}`,
+  ];
+
+  if (existingIndex) {
+    userLines.push(`\n---\nCurrent ${indexPath}:\n${existingIndex}`);
+  } else {
+    userLines.push(`\n---\nNote: ${indexPath} does not exist yet — create it fresh.`);
+  }
+
+  if (existingLog) {
+    userLines.push(`\n---\nCurrent ${logPath}:\n${existingLog}`);
+  } else {
+    userLines.push(`\n---\nNote: ${logPath} does not exist yet — create it fresh.`);
+  }
+
+  userLines.push(`\n---\nTranscript:\n${transcript}`);
+
+  return { system, user: userLines.join('\n') };
+}
+
 // ── OBSIDIAN ACTIONS ──
 
 async function sendEpisodeToObsidian(entryArg) {
