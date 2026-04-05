@@ -750,6 +750,27 @@
   .status-picker-item .dot {
     width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
   }
+  /* ── Calibre Picker ── */
+  .calibre-picker { margin-top:8px; }
+  .calibre-picker-search {
+    display:flex; gap:6px; align-items:center; margin-bottom:6px;
+  }
+  .calibre-picker-search input {
+    flex:1; background:var(--bg); border:1px solid var(--border); border-radius:4px;
+    color:var(--text); font-family:'JetBrains Mono',monospace; font-size:11px;
+    padding:5px 8px; outline:none;
+  }
+  .calibre-picker-search input:focus { border-color:var(--accent); }
+  .calibre-picker-results { display:flex; flex-direction:column; gap:4px; }
+  .calibre-picker-result {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:6px 10px; background:var(--surface2); border:1px solid var(--border);
+    border-radius:4px; cursor:pointer; transition:border-color .15s;
+  }
+  .calibre-picker-result:hover { border-color:var(--article); }
+  .calibre-picker-result .cp-title { font-size:12px; color:var(--text); }
+  .calibre-picker-result .cp-meta  { font-size:10px; color:var(--muted); font-family:'JetBrains Mono',monospace; }
+  .calibre-picker-empty { font-size:11px; color:var(--muted); padding:6px 2px; font-family:'JetBrains Mono',monospace; }
   .btn-calibre-push {
     background: rgba(192,132,252,.15); color: var(--books);
     border: 1px solid rgba(192,132,252,.3); border-radius: 6px;
@@ -1802,6 +1823,7 @@ const _dbClient = {
   searchGuests:     (q)                         => _dbClient._call('GET',  `/api/db/guests?q=${encodeURIComponent(q)}`),
   setEpisodeGuests: (episodeId, guests)          => _dbClient._call('PUT',  `/api/db/episodes/${encodeURIComponent(episodeId)}/guests`, { guests }),
   getGuestEpisodes: (guestId, limit=20)          => _dbClient._call('GET',  `/api/db/guests/${guestId}/episodes?limit=${limit}`),
+  getCalibreText:   (calibreId)                  => _dbClient._call('GET',  `/api/calibre/text/${encodeURIComponent(calibreId)}`),
 
   // Library
   library:          (params={})                 => {
@@ -6330,6 +6352,99 @@ async function _searchCalibreInner(title, author) {
 
 // 5-minute TTL: results auto-expire so adding a book mid-session is eventually reflected
 const searchCalibre = memoizeWithTTLAsync(_searchCalibreInner, 5 * 60 * 1000);
+
+/**
+ * Search Calibre Content Server for up to 10 books matching a free-text query.
+ * Returns [{bookId, title, authors, formats}] or [] on error / no results.
+ * Used by the Calibre Picker component.
+ */
+async function searchCalibreMulti(query) {
+  if (!query.trim()) return [];
+  const baseUrl = (pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
+  const headers = {};
+  if (pwConfig.calibreUser) {
+    headers['Authorization'] = 'Basic ' + btoa(`${pwConfig.calibreUser}:${pwConfig.calibrePass}`);
+  }
+  try {
+    const q   = encodeURIComponent(query.trim());
+    const res = await fetch(`${baseUrl}/ajax/search?query=${q}&num=10`, { headers });
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!data.book_ids || !data.book_ids.length) return [];
+
+    const ids     = data.book_ids.slice(0, 10).join(',');
+    const metaRes = await fetch(`${baseUrl}/ajax/books?ids=${ids}&fields=title,authors,formats`, { headers });
+    if (!metaRes.ok) return [];
+    const meta    = await metaRes.json();
+
+    return data.book_ids.slice(0, 10).map(id => {
+      const book = meta[id] || {};
+      return {
+        bookId:  parseInt(id),
+        title:   book.title || '(untitled)',
+        authors: (book.authors || []).join(', '),
+        formats: book.formats || [],
+      };
+    }).filter(b => b.title);
+  } catch (_) {
+    return [];
+  }
+}
+
+/**
+ * Render a search-as-you-type Calibre book picker into containerEl.
+ * onSelect({bookId, title, authors, formats}) is called when user picks a result.
+ * onCancel (optional) is called when user clicks Cancel.
+ */
+function openCalibrePicker(containerEl, onSelect, onCancel) {
+  containerEl.innerHTML = `
+    <div class="calibre-picker">
+      <div class="calibre-picker-search">
+        <input id="cpSearchInput" type="text" placeholder="Search Calibre…" autocomplete="off">
+        ${onCancel ? `<button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" id="cpCancelBtn">Cancel</button>` : ''}
+      </div>
+      <div class="calibre-picker-results" id="cpResults">
+        <div class="calibre-picker-empty">Type to search your Calibre library</div>
+      </div>
+    </div>`;
+
+  const input     = containerEl.querySelector('#cpSearchInput');
+  const resultsEl = containerEl.querySelector('#cpResults');
+  const cancelBtn = containerEl.querySelector('#cpCancelBtn');
+  if (cancelBtn && onCancel) cancelBtn.addEventListener('click', onCancel);
+  let debounce;
+
+  input.focus();
+  input.addEventListener('input', () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(async () => {
+      const q = input.value.trim();
+      if (!q) {
+        resultsEl.innerHTML = '<div class="calibre-picker-empty">Type to search your Calibre library</div>';
+        return;
+      }
+      resultsEl.innerHTML = '<div class="calibre-picker-empty">Searching…</div>';
+      const results = await searchCalibreMulti(q);
+      if (!results.length) {
+        resultsEl.innerHTML = '<div class="calibre-picker-empty">No results — try a different title or author</div>';
+        return;
+      }
+      resultsEl.innerHTML = results.map((r, i) =>
+        `<div class="calibre-picker-result" data-idx="${i}">
+          <div>
+            <div class="cp-title">${escHtml(r.title)}</div>
+            <div class="cp-meta">${escHtml(r.authors)}${r.formats.length ? ' · ' + r.formats.join(', ') : ''}</div>
+          </div>
+          <span style="color:var(--article);font-size:11px">Select →</span>
+        </div>`
+      ).join('');
+
+      resultsEl.querySelectorAll('.calibre-picker-result').forEach((el, i) => {
+        el.addEventListener('click', () => onSelect(results[i]));
+      });
+    }, 300);
+  });
+}
 
 async function testCalibreConnection() {
   const btn = document.getElementById('calibreTestBtn');
