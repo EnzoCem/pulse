@@ -382,3 +382,88 @@ def get_guest_episodes(guest_id: int, limit: int = 20, path: str = DB_PATH) -> l
             ORDER BY e.date DESC LIMIT ?
         """, (guest_id, limit)).fetchall()
     return [dict(r) for r in rows]
+
+
+# ── Library query ─────────────────────────────────────────────────────────────
+
+def query_library(status_filter: str = None, platform_filter: str = None,
+                  person_id: str = None, guest_id: int = None,
+                  calibre_only: bool = False, sort: str = 'date_desc',
+                  limit: int = 50, offset: int = 0,
+                  db_path: str = DB_PATH) -> dict:
+    """
+    Joined library query across episodes + content_status + calibre_links + guests.
+    Returns {items: [...], total: int}.
+    Each item includes: id, person_id, person_name, platform, title, link, date,
+    episode_number, duration_sec, status, calibre_id, calibre_type, guests.
+    """
+    where = ['1=1']
+    params = []
+
+    if status_filter:
+        if status_filter == 'unread':
+            # 'unread' means status IS 'unread' OR no row exists
+            where.append("COALESCE(cs.status, 'unread') = 'unread'")
+        else:
+            where.append('cs.status = ?')
+            params.append(status_filter)
+
+    if platform_filter:
+        where.append('e.platform = ?')
+        params.append(platform_filter)
+
+    if person_id:
+        where.append('e.person_id = ?')
+        params.append(person_id)
+
+    if guest_id:
+        where.append('EXISTS (SELECT 1 FROM episode_guests eg WHERE eg.episode_id=e.id AND eg.guest_id=?)')
+        params.append(guest_id)
+
+    if calibre_only:
+        where.append('cl.calibre_id IS NOT NULL')
+
+    order = 'e.date DESC' if sort == 'date_desc' else 'e.date ASC'
+    where_sql = ' AND '.join(where)
+
+    joins = """
+        FROM episodes e
+        LEFT JOIN content_status cs ON cs.entry_id = e.id
+        LEFT JOIN calibre_links cl  ON cl.entry_id = e.id
+        LEFT JOIN episode_guests eg ON eg.episode_id = e.id
+        LEFT JOIN guests g ON g.id = eg.guest_id
+    """
+
+    with get_db(db_path) as conn:
+        total = conn.execute(
+            f'SELECT COUNT(DISTINCT e.id) {joins} WHERE {where_sql}', params
+        ).fetchone()[0]
+
+        rows = conn.execute(f"""
+            SELECT
+              e.id, e.person_id, e.person_name, e.platform, e.title, e.link,
+              e.date, e.episode_number, e.duration_sec,
+              COALESCE(cs.status, 'unread') AS status,
+              cl.calibre_id, cl.content_type AS calibre_type,
+              GROUP_CONCAT(g.name, '||') AS guest_names,
+              GROUP_CONCAT(eg.source, '||') AS guest_sources
+            {joins}
+            WHERE {where_sql}
+            GROUP BY e.id
+            ORDER BY {order}
+            LIMIT ? OFFSET ?
+        """, params + [limit, offset]).fetchall()
+
+    items = []
+    for r in rows:
+        item = dict(r)
+        # Parse guests into structured list
+        names   = (item.pop('guest_names')   or '').split('||')
+        sources = (item.pop('guest_sources') or '').split('||')
+        item['guests'] = [
+            {'name': n, 'source': s, 'verified': s == 'manual'}
+            for n, s in zip(names, sources) if n
+        ]
+        items.append(item)
+
+    return {'items': items, 'total': total}

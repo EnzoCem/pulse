@@ -186,3 +186,50 @@ def test_set_episode_guests_and_search(db):
     results = search_guests('elon', db)
     assert len(results) == 1
     assert results[0]['name'] == 'Elon Musk'
+
+
+from db import query_library
+
+
+def test_library_returns_episodes(db):
+    eps = [{'id': 'ep-1', 'person_id': 'p1', 'person_name': 'Lex',
+            'platform': 'podcast', 'title': 'With Elon', 'link': 'http://x.com/1',
+            'description': '', 'date': '2026-01-01', 'duration_sec': 3600,
+            'episode_number': 1, 'itunes_episode_id': None}]
+    upsert_episodes(eps, db)
+    result = query_library(db_path=db)
+    assert result['total'] == 1
+    assert result['items'][0]['title'] == 'With Elon'
+    assert result['items'][0]['status'] == 'unread'
+
+
+def test_library_filter_by_status(db):
+    eps = [
+        {'id': 'ep-1', 'person_id': 'p1', 'person_name': 'Lex', 'platform': 'podcast',
+         'title': 'Ep 1', 'link': 'http://x.com/1', 'description': '', 'date': '2026-01-01',
+         'duration_sec': None, 'episode_number': None, 'itunes_episode_id': None},
+        {'id': 'ep-2', 'person_id': 'p1', 'person_name': 'Lex', 'platform': 'youtube',
+         'title': 'Ep 2', 'link': 'http://x.com/2', 'description': '', 'date': '2026-01-02',
+         'duration_sec': None, 'episode_number': None, 'itunes_episode_id': None},
+    ]
+    upsert_episodes(eps, db)
+    set_status('ep-1', 'p1', 'podcast', 'done', db)
+    result = query_library(status_filter='done', db_path=db)
+    assert result['total'] == 1
+    assert result['items'][0]['id'] == 'ep-1'
+
+
+def test_library_filter_calibre_only(db):
+    eps = [
+        {'id': 'ep-1', 'person_id': 'p1', 'person_name': 'Lex', 'platform': 'podcast',
+         'title': 'Ep 1', 'link': 'http://x.com/1', 'description': '', 'date': '2026-01-01',
+         'duration_sec': None, 'episode_number': None, 'itunes_episode_id': None},
+        {'id': 'ep-2', 'person_id': 'p1', 'person_name': 'Lex', 'platform': 'podcast',
+         'title': 'Ep 2', 'link': 'http://x.com/2', 'description': '', 'date': '2026-01-02',
+         'duration_sec': None, 'episode_number': None, 'itunes_episode_id': None},
+    ]
+    upsert_episodes(eps, db)
+    set_calibre_link('ep-1', 'p1', 10, 'Title', ['HTML'], 'transcript', db)
+    result = query_library(calibre_only=True, db_path=db)
+    assert result['total'] == 1
+    assert result['items'][0]['id'] == 'ep-1'
