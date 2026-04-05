@@ -4863,6 +4863,7 @@ function openEntry(entry) {
   ytBtn.textContent  = '📄 Load Transcript';
   aiBtn.textContent  = '🤖 AI Notes';
   obsBtn.textContent = '📓 Obsidian';
+  delete aiBtn.dataset.calibreId;
 
   // Reset transcript text for this modal session
   _currentTranscriptText = '';
@@ -4937,8 +4938,10 @@ function openEntry(entry) {
 
   _refreshWikiBtn();
 
-  // → Calibre push button for non-book entries (youtube, podcast, blog)
-  if (['youtube', 'podcast', 'blog', 'article'].includes(entry.platform) && _backendOnline) {
+  // → Calibre push button for non-book entries (youtube, podcast, blog, web articles)
+  // Exclude Calibre article entries — they're already in Calibre, push button is meaningless
+  const isCalibreEntry = entry.platform === 'article' && entry.link?.includes('/browse/book/');
+  if (['youtube', 'podcast', 'blog', 'article'].includes(entry.platform) && _backendOnline && !isCalibreEntry) {
     // Check if already pushed to Calibre; if not, show push button
     _dbClient.getCalibreLink(entry.id).then(link => {
       const transcriptArea = document.getElementById('transcriptArea');
