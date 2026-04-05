@@ -6566,8 +6566,23 @@ async function testCalibreConnection() {
 async function _checkAndShowCalibreBtn(entry) {
   const btn = document.getElementById('calibreBtn');
   if (!btn) return;
-  // Only show for book entries and when server is configured
   if (entry.platform !== 'books') { btn.style.display = 'none'; return; }
+
+  // Check our DB first — user may have previously linked this book manually
+  if (_backendOnline) {
+    const dbLink = await _dbClient.getCalibreLink(entry.id).catch(() => null);
+    if (dbLink && dbLink.calibre_id) {
+      const baseUrl = (pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
+      btn.href        = `${baseUrl}/browse/book/${dbLink.calibre_id}`;
+      btn.textContent = '📚 In My Library';
+      btn.style.display = '';
+      btn.style.opacity = '';
+      btn.style.pointerEvents = '';
+      btn.style.color = 'var(--books)';
+      btn.onclick = null;
+      return;
+    }
+  }
 
   btn.textContent = '📚 Checking…';
   btn.style.display = '';
@@ -6578,24 +6593,70 @@ async function _checkAndShowCalibreBtn(entry) {
   const result = await searchCalibre(entry.title, entry.author || '');
 
   if (result && result.found) {
-    const baseUrl  = (pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
-    btn.href       = `${baseUrl}/browse/book/${result.bookId}`;
+    const baseUrl = (pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
+    btn.href        = `${baseUrl}/browse/book/${result.bookId}`;
     btn.textContent = '📚 In My Library';
     btn.style.opacity = '';
     btn.style.pointerEvents = '';
     btn.style.color = 'var(--books)';
+    btn.onclick = null;
   } else if (result && !result.found) {
-    btn.textContent = '📚 Not in Library';
-    btn.style.opacity = '0.4';
-    btn.style.pointerEvents = 'none';
+    // Not auto-found — offer manual link
+    btn.removeAttribute('href');
+    btn.textContent     = '🔗 Link Calibre';
+    btn.style.opacity   = '';
+    btn.style.pointerEvents = '';
+    btn.style.color     = 'var(--article)';
+    btn.onclick = (e) => {
+      e.preventDefault();
+      _openBookCalibreLinker(entry, btn);
+    };
   } else {
-    // null = server unreachable — show a muted hint so the user knows to configure it
+    // null = Calibre offline
     btn.removeAttribute('href');
     btn.textContent = '📚 Calibre offline';
     btn.style.opacity = '0.35';
     btn.style.pointerEvents = 'none';
+    btn.style.color = '';
+    btn.onclick = null;
     btn.title = 'Start Calibre Content Server (Preferences → Sharing → Content Server) and add CORS header: Access-Control-Allow-Origin: *';
   }
+}
+
+function _openBookCalibreLinker(entry, triggerBtn) {
+  // Find or create a picker container below the calibre button area
+  let pickerContainer = document.getElementById('bookCalibrePickerArea');
+  if (!pickerContainer) {
+    pickerContainer = document.createElement('div');
+    pickerContainer.id = 'bookCalibrePickerArea';
+    pickerContainer.style.cssText = 'margin-top:10px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px';
+    // Insert after the button's parent div, or after the transcriptArea
+    const anchor = triggerBtn.closest('div') || document.getElementById('transcriptArea');
+    if (anchor) anchor.insertAdjacentElement('afterend', pickerContainer);
+    else document.getElementById('modalContent').appendChild(pickerContainer);
+  }
+
+  openCalibrePicker(pickerContainer, async (book) => {
+    // User selected a book — save the link
+    if (_backendOnline) {
+      await _dbClient.setCalibreLink(
+        entry.id, entry.personId, book.bookId,
+        book.title, book.formats, 'book'
+      ).catch(() => {});
+    }
+    // Update the button to show the link
+    const baseUrl    = (pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
+    triggerBtn.href        = `${baseUrl}/browse/book/${book.bookId}`;
+    triggerBtn.textContent = '📚 In My Library';
+    triggerBtn.style.color = 'var(--books)';
+    triggerBtn.style.opacity = '';
+    triggerBtn.style.pointerEvents = '';
+    triggerBtn.onclick     = null;
+    pickerContainer.remove();
+  }, () => {
+    // User cancelled
+    pickerContainer.remove();
+  });
 }
 
 // ── Add Article modal ─────────────────────────────────────────────────────────
