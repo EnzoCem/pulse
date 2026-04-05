@@ -757,6 +757,37 @@
   }
   .btn-calibre-push:hover { background: rgba(192,132,252,.28); }
   .btn-calibre-push:disabled { opacity: .4; cursor: default; }
+  /* Episode archive section */
+  .ep-archive-section { border-top: 1px solid var(--border); }
+  .ep-archive-header {
+    padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--border);
+  }
+  .ep-archive-row {
+    display: grid; grid-template-columns: 36px 1fr auto;
+    align-items: center; gap: 10px; padding: 8px 16px;
+    border-bottom: 1px solid rgba(42,42,53,.6); font-size: 13px;
+    cursor: pointer;
+  }
+  .ep-archive-row:last-child { border-bottom: none; }
+  .ep-archive-row:hover { background: var(--surface2); }
+  .ep-num { color: var(--muted); font-size: 11px; text-align: right; }
+  .ep-guests { color: var(--books); font-size: 11px; margin-top: 2px; }
+  .ep-guest-unverified { opacity: .65; }
+  .ep-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+  .ep-status-chip {
+    font-size: 10px; padding: 2px 7px; border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace; white-space: nowrap; cursor: pointer;
+  }
+  .ep-status-unread       { background: rgba(232,200,74,.15);  color: var(--accent); }
+  .ep-status-want_to_read { background: rgba(74,158,255,.15);  color: var(--accent2); }
+  .ep-status-in_progress  { background: rgba(232,116,74,.15);  color: var(--podcast); }
+  .ep-status-done         { background: rgba(160,232,74,.15);  color: var(--blog); }
+  .ep-status-skipped      { background: rgba(42,42,53,.5);     color: var(--muted); }
+  .ep-archive-load-more {
+    text-align: center; padding: 10px; font-size: 12px; color: var(--accent);
+    cursor: pointer; font-family: 'JetBrains Mono', monospace;
+  }
   .modal-title {
     font-family: 'Playfair Display', serif;
     font-size: 20px; font-weight: 700; line-height: 1.35;
@@ -1751,6 +1782,9 @@ let listenedIds   = new Set(); // entry IDs explicitly marked as listened
 let searchQuery   = '';   // current search filter string
 let _currentModalEntry = null;
 let _currentTranscriptText = '';  // transcript/article text for current modal, used by → Calibre push
+let _episodeArchive = [];        // cached episodes for current person
+let _episodeArchiveOffset = 0;   // pagination offset
+const EPISODE_PAGE_SIZE = 50;
 let _episodeDB    = null; // IndexedDB handle for full episode history
 let _addType      = 'person'; // 'person' | 'source' — current Add panel mode
 const DEFAULT_PODCAST_PROMPT = `You are an expert research assistant that extracts structured intelligence from podcast and video episodes.
@@ -2449,6 +2483,8 @@ function openPersonDetail(personId) {
   currentPerson   = person;
   _detailFilter   = 'all';
   _detailFormTags = [...(person.tags || [])];
+  _episodeArchive = [];
+  _episodeArchiveOffset = 0;
   renderPersonDetail();
   switchView('person');
 }
@@ -2647,6 +2683,23 @@ function renderPersonDetail() {
     } else {
       histRow.style.display = 'none';
     }
+  }
+
+  // All Episodes section — appended after the main innerHTML
+  if (_backendOnline && (currentPerson.feeds?.podcast || currentPerson.itunesId)) {
+    const epSection = document.createElement('div');
+    epSection.className = 'ep-archive-section';
+    epSection.innerHTML = `
+      <div class="ep-archive-header">
+        <span style="font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;letter-spacing:.05em">ALL EPISODES</span>
+        <button id="syncArchiveBtn" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-family:'JetBrains Mono',monospace"
+          onclick="syncEpisodeArchive(currentPerson)">⟳ Sync Archive</button>
+      </div>
+      <div id="episodeArchiveList" style="overflow-y:auto;max-height:60vh">
+        <div style="padding:16px;color:var(--muted);font-size:12px">Loading…</div>
+      </div>`;
+    wrap.appendChild(epSection);
+    loadEpisodeArchive(currentPerson, false);
   }
 }
 
@@ -4277,6 +4330,80 @@ async function pushEntryToCalibr(entryId, personId, title, contentType) {
     btn.textContent = '→ Calibre (failed)';
     btn.disabled = false;
   }
+}
+
+// ── Episode archive (All Episodes section in person panel) ───────────────────
+
+async function loadEpisodeArchive(person, append) {
+  if (!_backendOnline) return;
+  if (!append) { _episodeArchive = []; _episodeArchiveOffset = 0; }
+
+  const result = await _dbClient.getEpisodes(person.id, EPISODE_PAGE_SIZE, _episodeArchiveOffset);
+  if (!result) return;
+
+  _episodeArchiveOffset += result.episodes.length;
+  _episodeArchive = append ? [..._episodeArchive, ...result.episodes] : result.episodes;
+
+  renderEpisodeArchiveList(person, result.total, !!append);
+}
+
+function renderEpisodeArchiveList(person, total, append) {
+  const container = document.getElementById('episodeArchiveList');
+  if (!container) return;
+
+  const rows = _episodeArchive.map(ep => {
+    const status = getEntryStatus(ep.id) || 'unread';
+    const guests = ep.guests || [];
+    const guestHtml = guests.length
+      ? `<div class="ep-guests">${guests.map(g =>
+          `🎤 <span class="${g.verified ? '' : 'ep-guest-unverified'}" title="${g.verified ? 'verified' : 'auto-extracted'}">${escHtml(g.name)}${g.verified ? '' : ' ⚠'}</span>`
+        ).join(' · ')}</div>`
+      : '';
+
+    return `<div class="ep-archive-row">
+      <div class="ep-num">${ep.episode_number || ''}</div>
+      <div>
+        <div>${escHtml(ep.title)}</div>
+        ${guestHtml}
+      </div>
+      <div class="ep-actions">
+        <span class="ep-status-chip ep-status-${status}"
+          data-entry="${escHtml(ep.id)}"
+          data-person="${escHtml(ep.person_id)}"
+          data-platform="${escHtml(ep.platform)}"
+          onclick="event.stopPropagation();openStatusPickerFromDot(this)"
+          style="cursor:pointer">${status.replace(/_/g, ' ')}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  const loadMoreHtml = _episodeArchive.length < total
+    ? `<div class="ep-archive-load-more"
+        onclick="loadEpisodeArchive(currentPerson, true)">
+        Load more (${total - _episodeArchive.length} remaining)
+      </div>`
+    : (_episodeArchive.length > 0
+        ? `<div style="text-align:center;padding:8px;font-size:11px;color:var(--muted)">${total} episodes total</div>`
+        : '');
+
+  container.innerHTML = rows + loadMoreHtml;
+}
+
+async function syncEpisodeArchive(person) {
+  const btn = document.getElementById('syncArchiveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⟳ Syncing…'; }
+  const result = await _dbClient.syncEpisodes(
+    person.id, person.name,
+    person.feeds?.podcast || null,
+    person.itunesId || null
+  );
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = result
+      ? `⟳ Sync (${result.synced} fetched)`
+      : '⟳ Sync failed';
+  }
+  await loadEpisodeArchive(person, false);
 }
 
 function openEntry(entry) {
