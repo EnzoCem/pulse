@@ -5525,6 +5525,16 @@ Output ONLY the updated file contents using this exact format — no commentary,
   return { system, user: userLines.join('\n') };
 }
 
+function parseWikiResponse(text) {
+  const pages = {};
+  const re = /<wiki_file path="([^"]+)">([\s\S]*?)<\/wiki_file>/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    pages[m[1]] = m[2].replace(/^\n/, '').replace(/\n$/, '');
+  }
+  return pages;
+}
+
 // ── OBSIDIAN ACTIONS ──
 
 async function sendEpisodeToObsidian(entryArg) {
