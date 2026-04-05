@@ -721,6 +721,102 @@
     display: inline-block; margin-bottom: 12px;
     font-weight: 500;
   }
+  /* Status controls */
+  .status-dot {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    cursor: pointer; flex-shrink: 0; vertical-align: middle;
+    border: 1px solid rgba(255,255,255,.15);
+    transition: transform .15s;
+  }
+  .status-dot:hover { transform: scale(1.4); }
+  .status-dot[data-status="unread"]      { background: var(--accent); }
+  .status-dot[data-status="want_to_read"]{ background: var(--accent2); }
+  .status-dot[data-status="in_progress"] { background: var(--podcast); }
+  .status-dot[data-status="done"]        { background: var(--blog); }
+  .status-dot[data-status="skipped"]     { background: var(--border); }
+
+  .status-picker {
+    position: absolute; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px; z-index: 200; display: flex; flex-direction: column;
+    gap: 4px; min-width: 140px; box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  }
+  .status-picker-item {
+    display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 5px;
+    cursor: pointer; font-size: 12px; font-family: 'JetBrains Mono', monospace;
+    color: var(--text);
+  }
+  .status-picker-item:hover { background: var(--surface); }
+  .status-picker-item .dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .btn-calibre-push {
+    background: rgba(192,132,252,.15); color: var(--books);
+    border: 1px solid rgba(192,132,252,.3); border-radius: 6px;
+    padding: 5px 12px; font-size: 12px; font-family: 'JetBrains Mono',monospace;
+    cursor: pointer; transition: background .2s;
+  }
+  .btn-calibre-push:hover { background: rgba(192,132,252,.28); }
+  .btn-calibre-push:disabled { opacity: .4; cursor: default; }
+  /* Episode archive section */
+  .ep-archive-section { border-top: 1px solid var(--border); }
+  .ep-archive-header {
+    padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--border);
+  }
+  .ep-archive-row {
+    display: grid; grid-template-columns: 36px 1fr auto;
+    align-items: center; gap: 10px; padding: 8px 16px;
+    border-bottom: 1px solid rgba(42,42,53,.6); font-size: 13px;
+    cursor: pointer;
+  }
+  .ep-archive-row:last-child { border-bottom: none; }
+  .ep-archive-row:hover { background: var(--surface2); }
+  .ep-num { color: var(--muted); font-size: 11px; text-align: right; }
+  .ep-guests { color: var(--books); font-size: 11px; margin-top: 2px; }
+  .ep-guest-unverified { opacity: .65; }
+  .ep-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+  .ep-status-chip {
+    font-size: 10px; padding: 2px 7px; border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace; white-space: nowrap; cursor: pointer;
+  }
+  .ep-status-unread       { background: rgba(232,200,74,.15);  color: var(--accent); }
+  .ep-status-want_to_read { background: rgba(74,158,255,.15);  color: var(--accent2); }
+  .ep-status-in_progress  { background: rgba(232,116,74,.15);  color: var(--podcast); }
+  .ep-status-done         { background: rgba(160,232,74,.15);  color: var(--blog); }
+  .ep-status-skipped      { background: rgba(42,42,53,.5);     color: var(--muted); }
+  .ep-archive-load-more {
+    text-align: center; padding: 10px; font-size: 12px; color: var(--accent);
+    cursor: pointer; font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* Library tab */
+  .lib-filter-chip {
+    padding: 4px 10px; border-radius: 20px; font-size: 11px; font-family: 'JetBrains Mono', monospace;
+    border: 1px solid var(--border); color: var(--muted); cursor: pointer; white-space: nowrap;
+    background: transparent; transition: background .15s, color .15s;
+  }
+  .lib-filter-chip:hover   { border-color: var(--accent); color: var(--accent); }
+  .lib-filter-chip.active  { border-color: var(--accent); color: var(--accent); background: rgba(232,200,74,.1); }
+  .lib-platform-podcast { border-color: var(--podcast); color: var(--podcast); background: rgba(232,116,74,.08); }
+  .lib-platform-youtube { border-color: var(--youtube); color: var(--youtube); background: rgba(232,74,74,.08); }
+  .lib-platform-blog    { border-color: var(--blog);    color: var(--blog);    background: rgba(160,232,74,.08); }
+  .lib-calibre-chip     { border-color: var(--books);   color: var(--books);   background: rgba(192,132,252,.08); }
+
+  .lib-row {
+    display: grid; grid-template-columns: 16px 1fr auto;
+    gap: 12px; align-items: center; padding: 10px 16px;
+    border-bottom: 1px solid rgba(42,42,53,.5); cursor: pointer;
+  }
+  .lib-row:hover { background: var(--surface2); }
+  .lib-row-meta { display: flex; align-items: baseline; gap: 8px; margin-top: 3px; flex-wrap: wrap; }
+  .lib-person   { color: var(--muted); font-size: 11px; }
+  .lib-date     { color: #444; font-size: 11px; }
+  .lib-badges   { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+  .lib-platform-badge {
+    font-size: 10px; padding: 2px 6px; border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
   .modal-title {
     font-family: 'Playfair Display', serif;
     font-size: 20px; font-weight: 700; line-height: 1.35;
@@ -1170,6 +1266,7 @@
   <div class="tab-switcher">
     <button class="tab-btn active" onclick="switchView('people')" id="tab-people">People</button>
     <button class="tab-btn" onclick="switchView('timeline')" id="tab-timeline">Timeline</button>
+    <button class="tab-btn" onclick="switchView('library')" id="tab-library">📚 Library</button>
   </div>
 </header>
 
@@ -1464,6 +1561,12 @@
     </div>
   </div>
 
+  <!-- LIBRARY VIEW -->
+  <div class="view" id="view-library">
+    <div id="libraryFilterBar" style="display:flex;flex-wrap:wrap;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);align-items:center"></div>
+    <div id="libraryList" style="overflow-y:auto"></div>
+  </div>
+
   <!-- PERSON DETAIL VIEW -->
   <div class="view" id="view-person">
     <div class="person-detail-wrap" id="personDetailContent"></div>
@@ -1647,6 +1750,61 @@ function memoizeWithTTLAsync(fn, ttlMs = 5 * 60 * 1000) {
 
 // Free Nitter instances for X/Twitter RSS (tried in order; first working one wins)
 
+// ── DB Client (talks to backend SQLite layer) ─────────────────────────────────
+const _dbClient = {
+  _base: 'http://localhost:5001',
+
+  async _call(method, path, body) {
+    try {
+      const opts = { method, headers: { 'Content-Type': 'application/json' } };
+      if (body !== undefined) opts.body = JSON.stringify(body);
+      const r = await fetch(this._base + path, opts);
+      return r.ok ? await r.json() : null;
+    } catch { return null; }
+  },
+
+  // Status
+  getStatus:        (entryId)                   => _dbClient._call('GET',  `/api/db/status/${encodeURIComponent(entryId)}`),
+  setStatus:        (entryId, personId, platform, status) =>
+    _dbClient._call('PUT', `/api/db/status/${encodeURIComponent(entryId)}`,
+                    { person_id: personId, platform, status }),
+  getPersonStatuses:(personId)                  => _dbClient._call('GET',  `/api/db/status/person/${encodeURIComponent(personId)}`),
+
+  // Notes
+  getNotes:         (entryId)                   => _dbClient._call('GET',  `/api/db/notes/${encodeURIComponent(entryId)}`),
+  setNotes:         (entryId, personId, manual, ai) =>
+    _dbClient._call('PUT', `/api/db/notes/${encodeURIComponent(entryId)}`,
+                    { person_id: personId, manual_note: manual ?? undefined, ai_note: ai ?? undefined }),
+  migrateNotes:     (notes, personIds={})        => _dbClient._call('POST', '/api/db/notes/migrate', { notes, person_ids: personIds }),
+
+  // Calibre
+  getCalibreLink:   (entryId)                   => _dbClient._call('GET',  `/api/db/calibre/${encodeURIComponent(entryId)}`),
+  getPersonCalibre: (personId)                  => _dbClient._call('GET',  `/api/db/calibre/person/${encodeURIComponent(personId)}`),
+  pushToCalibr:     (entryId, personId, title, content, contentType) =>
+    _dbClient._call('POST', '/api/db/calibre/push',
+                    { entry_id: entryId, person_id: personId, title, content, content_type: contentType }),
+
+  // Episodes
+  getEpisodes:      (personId, limit=50, offset=0) =>
+    _dbClient._call('GET', `/api/db/episodes/${encodeURIComponent(personId)}?limit=${limit}&offset=${offset}`),
+  syncEpisodes:     (personId, personName, rssUrl, itunesId) =>
+    _dbClient._call('POST', `/api/db/episodes/sync/${encodeURIComponent(personId)}`,
+                    { person_name: personName, rss_url: rssUrl, itunes_id: itunesId }),
+
+  // Guests
+  searchGuests:     (q)                         => _dbClient._call('GET',  `/api/db/guests?q=${encodeURIComponent(q)}`),
+  setEpisodeGuests: (episodeId, guests)          => _dbClient._call('PUT',  `/api/db/episodes/${encodeURIComponent(episodeId)}/guests`, { guests }),
+  getGuestEpisodes: (guestId, limit=20)          => _dbClient._call('GET',  `/api/db/guests/${guestId}/episodes?limit=${limit}`),
+
+  // Library
+  library:          (params={})                 => {
+    const qs = new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([,v]) => v !== null && v !== undefined && v !== ''))
+    ).toString();
+    return _dbClient._call('GET', `/api/db/library${qs ? '?' + qs : ''}`);
+  },
+};
+
 // ── STATE ──
 let persons      = [];
 let allEntries    = [];
@@ -1659,6 +1817,18 @@ let entryNotes    = {};   // { entryId: string }   — free-text notes per episo
 let listenedIds   = new Set(); // entry IDs explicitly marked as listened
 let searchQuery   = '';   // current search filter string
 let _currentModalEntry = null;
+let _currentTranscriptText = '';  // transcript/article text for current modal, used by → Calibre push
+let _libraryItems   = [];
+let _libraryTotal   = 0;
+let _libraryOffset  = 0;
+const LIBRARY_PAGE_SIZE = 50;
+let _libraryFilters = {
+  status: null, platform: null, person_id: null,
+  guest_id: null, calibre_only: false, sort: 'date_desc',
+};
+let _episodeArchive = [];        // cached episodes for current person
+let _episodeArchiveOffset = 0;   // pagination offset
+const EPISODE_PAGE_SIZE = 50;
 let _episodeDB    = null; // IndexedDB handle for full episode history
 let _addType      = 'person'; // 'person' | 'source' — current Add panel mode
 const DEFAULT_PODCAST_PROMPT = `You are an expert research assistant that extracts structured intelligence from podcast and video episodes.
@@ -2105,6 +2275,7 @@ async function loadYouTubeTranscript() {
               — ${data.segments} segments · via backend
             </div>
             <div class="transcript-body">${escHtml(data.transcript)}</div>`;
+          _currentTranscriptText = data.transcript;
           btn.textContent = '📄 Transcript ✓';
           return;
         }
@@ -2168,6 +2339,7 @@ async function loadYouTubeTranscript() {
         — ${segs.length} segments
       </div>
       <div class="transcript-body">${escHtml(text)}</div>`;
+    _currentTranscriptText = text;
     btn.textContent = '📄 Transcript ✓';
 
   } catch(e) {
@@ -2239,9 +2411,12 @@ function saveState() {
   try {
     localStorage.setItem('pw-persons',    JSON.stringify(persons.map(p => ({ ...p, loading: false, backgroundRefreshing: false }))));
     localStorage.setItem('pw-seen',       JSON.stringify([...seenIds]));
-    localStorage.setItem('pw-listened',   JSON.stringify([...listenedIds]));
+    // Skip writing pw-listened and pw-notes once they've been migrated to SQLite
+    if (!localStorage.getItem('pw-listened-migrated'))
+      localStorage.setItem('pw-listened', JSON.stringify([...listenedIds]));
     localStorage.setItem('pw-entry-tags', JSON.stringify(entryTags));
-    localStorage.setItem('pw-notes',      JSON.stringify(entryNotes));
+    if (!localStorage.getItem('pw-notes-migrated'))
+      localStorage.setItem('pw-notes',    JSON.stringify(entryNotes));
   } catch(e) {}
 }
 
@@ -2330,11 +2505,12 @@ function switchView(v) {
   document.getElementById('view-' + v).classList.add('active');
   // Tab buttons only apply to people/timeline
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  if (v === 'people' || v === 'timeline') document.getElementById('tab-' + v)?.classList.add('active');
+  if (['people', 'timeline', 'library'].includes(v)) document.getElementById('tab-' + v)?.classList.add('active');
   // Body class drives CSS visibility of back btn, toolbar, tag row, tabs
   document.body.classList.toggle('view-person', v === 'person');
   if (v === 'timeline') renderTimeline();
   if (v === 'people')   { renderAllCards(); renderHistoryResults(); }
+  if (v === 'library') { _libraryItems = []; _libraryOffset = 0; renderLibraryFilterBar(); loadLibrary(); }
 }
 
 // ── PERSON DETAIL PAGE ──
@@ -2351,9 +2527,12 @@ function openPersonDetail(personId) {
   const person = persons.find(p => p.id === personId);
   if (!person) return;
   ensureFresh(person);
+  loadPersonStatuses(person.id);
   currentPerson   = person;
   _detailFilter   = 'all';
   _detailFormTags = [...(person.tags || [])];
+  _episodeArchive = [];
+  _episodeArchiveOffset = 0;
   renderPersonDetail();
   switchView('person');
 }
@@ -2552,6 +2731,23 @@ function renderPersonDetail() {
     } else {
       histRow.style.display = 'none';
     }
+  }
+
+  // All Episodes section — appended after the main innerHTML
+  if (_backendOnline && (currentPerson.feeds?.podcast || currentPerson.itunesId)) {
+    const epSection = document.createElement('div');
+    epSection.className = 'ep-archive-section';
+    epSection.innerHTML = `
+      <div class="ep-archive-header">
+        <span style="font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;letter-spacing:.05em">ALL EPISODES</span>
+        <button id="syncArchiveBtn" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-family:'JetBrains Mono',monospace"
+          onclick="syncEpisodeArchive(currentPerson)">⟳ Sync Archive</button>
+      </div>
+      <div id="episodeArchiveList" style="overflow-y:auto;max-height:60vh">
+        <div style="padding:16px;color:var(--muted);font-size:12px">Loading…</div>
+      </div>`;
+    wrap.appendChild(epSection);
+    loadEpisodeArchive(currentPerson, false);
   }
 }
 
@@ -4079,6 +4275,345 @@ async function refreshAll() {
 }
 
 // ── ENTRY MODAL ──
+// ── Status controls ───────────────────────────────────────────────────────────
+// In-memory cache: entry_id → status (populated per-person on panel open)
+const _statusCache = new Map();
+
+const STATUS_META = [
+  { value: 'unread',       label: 'Unread',       color: 'var(--accent)' },
+  { value: 'want_to_read', label: 'Want to Read',  color: 'var(--accent2)' },
+  { value: 'in_progress',  label: 'In Progress',   color: 'var(--podcast)' },
+  { value: 'done',         label: 'Done',          color: 'var(--blog)' },
+  { value: 'skipped',      label: 'Skipped',       color: 'var(--border)' },
+];
+
+function getEntryStatus(entryId) {
+  return _statusCache.get(entryId) || 'unread';
+}
+
+async function setEntryStatus(entryId, personId, platform, status) {
+  _statusCache.set(entryId, status);
+  // Update all dots for this entry immediately
+  document.querySelectorAll(`.status-dot[data-entry="${CSS.escape(entryId)}"]`).forEach(dot => {
+    dot.dataset.status = status;
+    dot.title = STATUS_META.find(s => s.value === status)?.label || status;
+  });
+  if (_backendOnline) {
+    await _dbClient.setStatus(entryId, personId, platform, status);
+  }
+}
+
+function openStatusPicker(anchorEl, entryId, personId, platform) {
+  // Remove any existing picker
+  document.querySelector('.status-picker')?.remove();
+
+  const picker = document.createElement('div');
+  picker.className = 'status-picker';
+  const rect = anchorEl.getBoundingClientRect();
+  picker.style.cssText = `position:fixed;top:${rect.bottom + 4}px;left:${rect.left}px`;
+
+  STATUS_META.forEach(s => {
+    const item = document.createElement('div');
+    item.className = 'status-picker-item';
+    item.innerHTML = `<div class="dot" style="background:${s.color}"></div>${s.label}`;
+    item.addEventListener('click', () => {
+      setEntryStatus(entryId, personId, platform, s.value);
+      picker.remove();
+    });
+    picker.appendChild(item);
+  });
+
+  document.body.appendChild(picker);
+  // Close on outside click
+  setTimeout(() => document.addEventListener('click', function h() {
+    picker.remove(); document.removeEventListener('click', h);
+  }), 0);
+}
+
+function statusDotHtml(entry) {
+  const status = getEntryStatus(entry.id);
+  const label  = STATUS_META.find(s => s.value === status)?.label || 'Unread';
+  return `<span class="status-dot" data-status="${status}" data-entry="${escHtml(entry.id)}"
+    data-person="${escHtml(entry.personId)}" data-platform="${escHtml(entry.platform)}"
+    title="${label}"
+    onclick="event.stopPropagation();openStatusPickerFromDot(this)"></span>`;
+}
+
+function openStatusPickerFromDot(dot) {
+  openStatusPicker(dot, dot.dataset.entry, dot.dataset.person, dot.dataset.platform);
+}
+
+async function loadPersonStatuses(personId) {
+  if (!_backendOnline) return;
+  const result = await _dbClient.getPersonStatuses(personId);
+  if (result) {
+    Object.entries(result).forEach(([id, status]) => _statusCache.set(id, status));
+  }
+}
+
+async function pushEntryToCalibr(entryId, personId, title, contentType) {
+  if (!_backendOnline) return;
+  const btn = document.getElementById('calibrePushBtn');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = '→ Pushing…';
+
+  const content = _currentTranscriptText;
+  if (!content) {
+    btn.textContent = '→ Calibre (no content — load transcript first)';
+    btn.disabled = false;
+    return;
+  }
+
+  const result = await _dbClient.pushToCalibr(entryId, personId, title, content, contentType);
+  if (result && result.calibre_id) {
+    const baseUrl = (pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
+    const link = document.createElement('a');
+    link.href = `${baseUrl}/browse/book/${result.calibre_id}`;
+    link.target = '_blank';
+    link.style.cssText = 'color:var(--books);font-size:12px;font-family:\'JetBrains Mono\',monospace';
+    link.textContent = '📚 In Calibre';
+    btn.replaceWith(link);
+  } else {
+    btn.textContent = '→ Calibre (failed)';
+    btn.disabled = false;
+  }
+}
+
+// ── Library tab ───────────────────────────────────────────────────────────────
+
+function renderLibraryFilterBar() {
+  const bar = document.getElementById('libraryFilterBar');
+  if (!bar) return;
+
+  const statuses = [
+    { value: null,           label: 'All' },
+    { value: 'unread',       label: 'Unread' },
+    { value: 'want_to_read', label: 'Want to Read' },
+    { value: 'in_progress',  label: 'In Progress' },
+    { value: 'done',         label: 'Done' },
+    { value: 'skipped',      label: 'Skipped' },
+  ];
+
+  const statusChips = statuses.map(s => {
+    const active = _libraryFilters.status === s.value;
+    const btn = document.createElement('button');
+    btn.className = `lib-filter-chip${active ? ' active' : ''}`;
+    btn.textContent = s.label;
+    btn.addEventListener('click', () => {
+      _libraryFilters.status = s.value;
+      _libraryOffset = 0;
+      loadLibrary();
+    });
+    return btn;
+  });
+
+  const sep1 = document.createElement('span');
+  sep1.style.cssText = 'width:1px;background:var(--border);height:16px;flex-shrink:0';
+
+  const platformChips = ['podcast', 'youtube', 'blog'].map(p => {
+    const active = _libraryFilters.platform === p;
+    const btn = document.createElement('button');
+    btn.className = `lib-filter-chip lib-platform-${p}${active ? ' active' : ''}`;
+    btn.textContent = p;
+    btn.addEventListener('click', () => {
+      _libraryFilters.platform = _libraryFilters.platform === p ? null : p;
+      _libraryOffset = 0;
+      loadLibrary();
+    });
+    return btn;
+  });
+
+  const sep2 = document.createElement('span');
+  sep2.style.cssText = 'width:1px;background:var(--border);height:16px;flex-shrink:0';
+
+  const calibreBtn = document.createElement('button');
+  calibreBtn.className = `lib-filter-chip lib-calibre-chip${_libraryFilters.calibre_only ? ' active' : ''}`;
+  calibreBtn.textContent = '📚 In Calibre';
+  calibreBtn.addEventListener('click', () => {
+    _libraryFilters.calibre_only = !_libraryFilters.calibre_only;
+    _libraryOffset = 0;
+    loadLibrary();
+  });
+
+  bar.innerHTML = '';
+  [...statusChips, sep1, ...platformChips, sep2, calibreBtn].forEach(el => bar.appendChild(el));
+}
+
+async function loadLibrary(append) {
+  const list = document.getElementById('libraryList');
+  if (!list) return;
+
+  if (!_backendOnline) {
+    list.innerHTML = `<div style="padding:32px;text-align:center;color:var(--muted)">
+      Backend offline — start the Flask server to use the Library tab.
+    </div>`;
+    return;
+  }
+
+  const result = await _dbClient.library({
+    status:       _libraryFilters.status,
+    platform:     _libraryFilters.platform,
+    person_id:    _libraryFilters.person_id,
+    guest_id:     _libraryFilters.guest_id,
+    calibre_only: _libraryFilters.calibre_only || null,
+    sort:         _libraryFilters.sort,
+    limit:        LIBRARY_PAGE_SIZE,
+    offset:       _libraryOffset,
+  });
+  if (!result) return;
+
+  _libraryTotal = result.total;
+  _libraryItems = append ? [..._libraryItems, ...result.items] : result.items;
+  _libraryOffset += result.items.length;
+
+  renderLibraryList();
+  renderLibraryFilterBar();
+}
+
+function renderLibraryList() {
+  const el = document.getElementById('libraryList');
+  if (!el) return;
+
+  if (_libraryItems.length === 0) {
+    el.innerHTML = `<div style="padding:32px;text-align:center;color:var(--muted)">No items match your filters.</div>`;
+    return;
+  }
+
+  const PLATFORM_COLOR = {
+    podcast: 'var(--podcast)', youtube: 'var(--youtube)',
+    twitter: 'var(--twitter)', blog: 'var(--blog)', books: 'var(--books)'
+  };
+
+  el.innerHTML = '';
+  _libraryItems.forEach(item => {
+    const status    = item.status || 'unread';
+    const color     = PLATFORM_COLOR[item.platform] || 'var(--muted)';
+    const guestHtml = (item.guests || []).length
+      ? item.guests.map(g =>
+          `🎤 <span style="color:var(--books);font-size:11px">${escHtml(g.name)}${g.verified ? '' : ' ⚠'}</span>`
+        ).join(' · ')
+      : '';
+
+    const row = document.createElement('div');
+    row.className = 'lib-row';
+
+    const dot = document.createElement('span');
+    dot.className = 'status-dot';
+    dot.dataset.status  = status;
+    dot.dataset.entry   = item.id;
+    dot.dataset.person  = item.person_id;
+    dot.dataset.platform = item.platform;
+    dot.title = status.replace(/_/g, ' ');
+    dot.addEventListener('click', e => {
+      e.stopPropagation();
+      openStatusPickerFromDot(dot);
+    });
+
+    const body = document.createElement('div');
+    body.innerHTML = `
+      <div style="font-size:13px">${escHtml(item.title)}</div>
+      <div class="lib-row-meta">
+        <span class="lib-person">${escHtml(item.person_name)}</span>
+        <span class="lib-date">${item.date ? '· ' + new Date(item.date).toLocaleDateString() : ''}</span>
+        ${guestHtml ? `<span style="margin-left:4px">${guestHtml}</span>` : ''}
+      </div>`;
+
+    const badges = document.createElement('div');
+    badges.className = 'lib-badges';
+    badges.innerHTML = `
+      <span class="lib-platform-badge" style="background:${color}20;color:${color}">${item.platform}</span>
+      ${item.calibre_id ? `<span style="color:var(--books);font-size:11px">📚</span>` : ''}`;
+
+    row.appendChild(dot);
+    row.appendChild(body);
+    row.appendChild(badges);
+    el.appendChild(row);
+  });
+
+  if (_libraryItems.length < _libraryTotal) {
+    const more = document.createElement('div');
+    more.style.cssText = 'text-align:center;padding:12px;font-size:12px;color:var(--accent);cursor:pointer';
+    more.textContent = `Load more (${_libraryTotal - _libraryItems.length} remaining)`;
+    more.addEventListener('click', () => loadLibrary(true));
+    el.appendChild(more);
+  }
+}
+
+// ── Episode archive (All Episodes section in person panel) ───────────────────
+
+async function loadEpisodeArchive(person, append) {
+  if (!_backendOnline) return;
+  if (!append) { _episodeArchive = []; _episodeArchiveOffset = 0; }
+
+  const result = await _dbClient.getEpisodes(person.id, EPISODE_PAGE_SIZE, _episodeArchiveOffset);
+  if (!result) return;
+
+  _episodeArchiveOffset += result.episodes.length;
+  _episodeArchive = append ? [..._episodeArchive, ...result.episodes] : result.episodes;
+
+  renderEpisodeArchiveList(person, result.total, !!append);
+}
+
+function renderEpisodeArchiveList(person, total, append) {
+  const container = document.getElementById('episodeArchiveList');
+  if (!container) return;
+
+  const rows = _episodeArchive.map(ep => {
+    const status = getEntryStatus(ep.id) || 'unread';
+    const guests = ep.guests || [];
+    const guestHtml = guests.length
+      ? `<div class="ep-guests">${guests.map(g =>
+          `🎤 <span class="${g.verified ? '' : 'ep-guest-unverified'}" title="${g.verified ? 'verified' : 'auto-extracted'}">${escHtml(g.name)}${g.verified ? '' : ' ⚠'}</span>`
+        ).join(' · ')}</div>`
+      : '';
+
+    return `<div class="ep-archive-row">
+      <div class="ep-num">${ep.episode_number || ''}</div>
+      <div>
+        <div>${escHtml(ep.title)}</div>
+        ${guestHtml}
+      </div>
+      <div class="ep-actions">
+        <span class="ep-status-chip ep-status-${status}"
+          data-entry="${escHtml(ep.id)}"
+          data-person="${escHtml(ep.person_id)}"
+          data-platform="${escHtml(ep.platform)}"
+          onclick="event.stopPropagation();openStatusPickerFromDot(this)"
+          style="cursor:pointer">${status.replace(/_/g, ' ')}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  const loadMoreHtml = _episodeArchive.length < total
+    ? `<div class="ep-archive-load-more"
+        onclick="loadEpisodeArchive(currentPerson, true)">
+        Load more (${total - _episodeArchive.length} remaining)
+      </div>`
+    : (_episodeArchive.length > 0
+        ? `<div style="text-align:center;padding:8px;font-size:11px;color:var(--muted)">${total} episodes total</div>`
+        : '');
+
+  container.innerHTML = rows + loadMoreHtml;
+}
+
+async function syncEpisodeArchive(person) {
+  const btn = document.getElementById('syncArchiveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⟳ Syncing…'; }
+  const result = await _dbClient.syncEpisodes(
+    person.id, person.name,
+    person.feeds?.podcast || null,
+    person.itunesId || null
+  );
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = result
+      ? `⟳ Sync (${result.synced} fetched)`
+      : '⟳ Sync failed';
+  }
+  await loadEpisodeArchive(person, false);
+}
+
 function openEntry(entry) {
   if (typeof entry === 'string') entry = JSON.parse(entry);
   seenIds.add(entry.id);
@@ -4092,9 +4627,12 @@ function openEntry(entry) {
 
   document.getElementById('modalContent').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-      <span class="modal-platform-tag" style="background:${pl.color}20;color:${pl.color}">
-        ${pl.emoji} ${pl.label}
-      </span>
+      <div style="display:flex;align-items:center;gap:8px">
+        ${statusDotHtml(entry)}
+        <span class="modal-platform-tag" style="background:${pl.color}20;color:${pl.color}">
+          ${pl.emoji} ${pl.label}
+        </span>
+      </div>
       <span style="font-size:11px;color:var(--muted)">${escHtml(person.name||'')}</span>
     </div>
     <div class="modal-title">${escHtml(entry.title)}</div>
@@ -4236,6 +4774,9 @@ function openEntry(entry) {
   aiBtn.textContent  = '🤖 AI Notes';
   obsBtn.textContent = '📓 Obsidian';
 
+  // Reset transcript text for this modal session
+  _currentTranscriptText = '';
+
   if (entry.platform === 'youtube') {
     // YouTube: inline transcript via captions API
     ytBtn.style.display = '';
@@ -4279,6 +4820,46 @@ function openEntry(entry) {
   } else if (entry.platform === 'books') {
     // Books: check Calibre library in background
     if (pwConfig.calibreUrl) _checkAndShowCalibreBtn(entry);
+  }
+
+  // → Calibre push button for non-book entries (youtube, podcast, blog)
+  if (['youtube', 'podcast', 'blog'].includes(entry.platform) && _backendOnline) {
+    // Check if already pushed to Calibre; if not, show push button
+    _dbClient.getCalibreLink(entry.id).then(link => {
+      const transcriptArea = document.getElementById('transcriptArea');
+      if (!transcriptArea) return;
+      // Remove any existing push button/link
+      document.getElementById('calibrePushBtn')?.remove();
+      document.querySelector('#transcriptArea + .calibre-link-inline')?.remove();
+
+      if (link && link.calibre_id) {
+        // Already in Calibre — show link
+        const baseUrl = (pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
+        const div = document.createElement('div');
+        div.style.cssText = 'margin-top:8px';
+        const a = document.createElement('a');
+        a.href = `${baseUrl}/browse/book/${link.calibre_id}`;
+        a.target = '_blank';
+        a.style.cssText = 'color:var(--books);font-size:12px;font-family:\'JetBrains Mono\',monospace';
+        a.textContent = '📚 In Calibre';
+        div.appendChild(a);
+        transcriptArea.insertAdjacentElement('afterend', div);
+      } else {
+        // Not yet pushed — show push button
+        const contentType = (entry.platform === 'blog') ? 'article' : 'transcript';
+        const div = document.createElement('div');
+        div.style.cssText = 'margin-top:8px';
+        const btn = document.createElement('button');
+        btn.id = 'calibrePushBtn';
+        btn.className = 'btn-calibre-push';
+        btn.textContent = '→ Calibre';
+        btn.addEventListener('click', () => {
+          pushEntryToCalibr(entry.id, entry.personId, entry.title, contentType);
+        });
+        div.appendChild(btn);
+        transcriptArea.insertAdjacentElement('afterend', div);
+      }
+    });
   }
 
   // My Notebooks — re-check backend freshly each time the modal opens, then show button
@@ -5324,6 +5905,57 @@ async function _checkBackend() {
   } catch { _backendOnline = false; }
 }
 
+async function _runMigrations() {
+  if (!_backendOnline) return;
+
+  // Migrate pw-notes → SQLite notes table
+  if (!localStorage.getItem('pw-notes-migrated')) {
+    const raw = localStorage.getItem('pw-notes');
+    if (raw) {
+      try {
+        const notes = JSON.parse(raw);
+        // Enrich with person_id by looking up each entry in allEntries
+        const personIds = {};
+        for (const entryId of Object.keys(notes)) {
+          const entry = allEntries.find(e => e.id === entryId);
+          if (entry) personIds[entryId] = entry.personId;
+        }
+        const result = await _dbClient.migrateNotes(notes, personIds);
+        if (result !== null) {
+          localStorage.removeItem('pw-notes');
+          localStorage.setItem('pw-notes-migrated', '1');
+          console.log(`[Pulse] Migrated ${result.migrated} notes to SQLite`);
+        }
+      } catch (e) { console.warn('[Pulse] Notes migration failed:', e); }
+    } else {
+      // No notes to migrate — mark done anyway
+      localStorage.setItem('pw-notes-migrated', '1');
+    }
+  }
+
+  // Migrate pw-listened → SQLite content_status (status = 'done')
+  if (!localStorage.getItem('pw-listened-migrated')) {
+    const raw = localStorage.getItem('pw-listened');
+    if (raw) {
+      try {
+        const listenedIds = JSON.parse(raw);
+        for (const entryId of listenedIds) {
+          // Find the entry to get person_id and platform
+          const entry = allEntries.find(e => e.id === entryId);
+          if (entry) {
+            await _dbClient.setStatus(entryId, entry.personId, entry.platform, 'done');
+          }
+        }
+        localStorage.removeItem('pw-listened');
+        localStorage.setItem('pw-listened-migrated', '1');
+        console.log(`[Pulse] Migrated ${listenedIds.length} listened entries to SQLite`);
+      } catch (e) { console.warn('[Pulse] Listened migration failed:', e); }
+    } else {
+      localStorage.setItem('pw-listened-migrated', '1');
+    }
+  }
+}
+
 // ── NOTEBOOK LIBRARY UI HELPERS ──
 function _renderNotebookLibraryRows() {
   const container = document.getElementById('notebook-library-rows');
@@ -5583,7 +6215,7 @@ async function _checkAndShowCalibreBtn(entry) {
 loadState();
 loadConfig();
 _restoreVaultHandle();  // async — restores Obsidian vault handle if permission still granted
-_checkBackend();        // async — detect if Pulse backend is running on localhost:5001
+_checkBackend().then(_runMigrations);  // detect backend, then run one-time localStorage migrations
 renderAllCards();
 renderTagFilterRow();
 updateStatus();
