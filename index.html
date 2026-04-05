@@ -4821,6 +4821,10 @@ function openEntry(entry) {
     elOpen.style.pointerEvents = 'none';
     elOpen.style.display = '';
   }
+  // Override Open button label for Calibre articles
+  if (entry.platform === 'article' && entry.link && entry.link.includes('/browse/book/')) {
+    elOpen.textContent = '📚 Open in Calibre';
+  }
   // render any existing tags for this entry
   renderModalTags();
 
@@ -4903,6 +4907,27 @@ function openEntry(entry) {
     nbBtn.style.display  = '';   // NotebookLM — copies article URL (web source)
     aiBtn.style.display  = '';   // AI Notes — fetches article text
     obsBtn.style.display = '';   // Obsidian
+  } else if (entry.platform === 'article') {
+    // Manual article — web URL or Calibre PDF
+    const isCalibreArticle = entry.link && entry.link.includes('/browse/book/');
+    if (isCalibreArticle) {
+      if (_backendOnline) {
+        const calibreIdMatch = entry.link.match(/\/browse\/book\/(\d+)/);
+        if (calibreIdMatch) {
+          aiBtn.style.display   = '';
+          obsBtn.style.display  = '';
+          wikiBtn.style.display = '';
+          aiBtn.dataset.calibreId = calibreIdMatch[1];
+        }
+      }
+    } else {
+      // Web article: same as blog
+      nbBtn.style.display   = '';
+      aiBtn.style.display   = '';
+      obsBtn.style.display  = '';
+      wikiBtn.style.display = '';
+      delete aiBtn.dataset.calibreId;
+    }
   } else if (entry.platform === 'books') {
     // Books: check Calibre library in background
     if (pwConfig.calibreUrl) _checkAndShowCalibreBtn(entry);
@@ -4911,7 +4936,7 @@ function openEntry(entry) {
   _refreshWikiBtn();
 
   // → Calibre push button for non-book entries (youtube, podcast, blog)
-  if (['youtube', 'podcast', 'blog'].includes(entry.platform) && _backendOnline) {
+  if (['youtube', 'podcast', 'blog', 'article'].includes(entry.platform) && _backendOnline) {
     // Check if already pushed to Calibre; if not, show push button
     _dbClient.getCalibreLink(entry.id).then(link => {
       const transcriptArea = document.getElementById('transcriptArea');
@@ -6024,7 +6049,7 @@ async function generateAINotes() {
     aiArea.style.display = '';
   }
 
-  const isArticle = entry.platform === 'blog' || entry.platform === 'twitter';
+  const isArticle = entry.platform === 'blog' || entry.platform === 'twitter' || entry.platform === 'article';
 
   try {
     const person   = persons.find(p => p.id === entry.personId) || {};
@@ -6063,15 +6088,33 @@ async function generateAINotes() {
         }
       }
     } else if (isArticle) {
-      // Blog / Twitter / Substack: fetch the actual article text
-      if (aiArea) {
-        aiArea.innerHTML = `
-          <div class="ai-notes-label"><span class="ai-notes-spinner"></span> Fetching article…</div>`;
-      }
-      const articleText = await fetchArticleText(entry.link);
-      if (articleText) {
-        transcript = articleText;
-        sourceNote = 'article text';
+      const calibreId = document.getElementById('aiNotesBtn')?.dataset?.calibreId;
+      if (calibreId && _backendOnline) {
+        // Calibre article: load text from backend
+        if (aiArea) {
+          aiArea.innerHTML = `
+            <div class="ai-notes-label"><span class="ai-notes-spinner"></span> Extracting text from Calibre…</div>`;
+        }
+        const result = await _dbClient.getCalibreText(calibreId);
+        if (result && result.text) {
+          transcript = result.text;
+          sourceNote = 'Calibre PDF text';
+        } else {
+          throw new Error(result?.error === 'no_text'
+            ? 'Could not extract text from this PDF'
+            : (result?.error || 'Calibre text extraction failed'));
+        }
+      } else {
+        // Web article (blog / Twitter / Substack): fetch the actual article text
+        if (aiArea) {
+          aiArea.innerHTML = `
+            <div class="ai-notes-label"><span class="ai-notes-spinner"></span> Fetching article…</div>`;
+        }
+        const articleText = await fetchArticleText(entry.link);
+        if (articleText) {
+          transcript = articleText;
+          sourceNote = 'article text';
+        }
       }
     }
 
