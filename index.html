@@ -1647,6 +1647,61 @@ function memoizeWithTTLAsync(fn, ttlMs = 5 * 60 * 1000) {
 
 // Free Nitter instances for X/Twitter RSS (tried in order; first working one wins)
 
+// ── DB Client (talks to backend SQLite layer) ─────────────────────────────────
+const _dbClient = {
+  _base: 'http://localhost:5001',
+
+  async _call(method, path, body) {
+    try {
+      const opts = { method, headers: { 'Content-Type': 'application/json' } };
+      if (body !== undefined) opts.body = JSON.stringify(body);
+      const r = await fetch(this._base + path, opts);
+      return r.ok ? await r.json() : null;
+    } catch { return null; }
+  },
+
+  // Status
+  getStatus:        (entryId)                   => _dbClient._call('GET',  `/api/db/status/${encodeURIComponent(entryId)}`),
+  setStatus:        (entryId, personId, platform, status) =>
+    _dbClient._call('PUT', `/api/db/status/${encodeURIComponent(entryId)}`,
+                    { person_id: personId, platform, status }),
+  getPersonStatuses:(personId)                  => _dbClient._call('GET',  `/api/db/status/person/${encodeURIComponent(personId)}`),
+
+  // Notes
+  getNotes:         (entryId)                   => _dbClient._call('GET',  `/api/db/notes/${encodeURIComponent(entryId)}`),
+  setNotes:         (entryId, personId, manual, ai) =>
+    _dbClient._call('PUT', `/api/db/notes/${encodeURIComponent(entryId)}`,
+                    { person_id: personId, manual_note: manual ?? undefined, ai_note: ai ?? undefined }),
+  migrateNotes:     (notes)                     => _dbClient._call('POST', '/api/db/notes/migrate', { notes }),
+
+  // Calibre
+  getCalibreLink:   (entryId)                   => _dbClient._call('GET',  `/api/db/calibre/${encodeURIComponent(entryId)}`),
+  getPersonCalibre: (personId)                  => _dbClient._call('GET',  `/api/db/calibre/person/${encodeURIComponent(personId)}`),
+  pushToCalibr:     (entryId, personId, title, content, contentType) =>
+    _dbClient._call('POST', '/api/db/calibre/push',
+                    { entry_id: entryId, person_id: personId, title, content, content_type: contentType }),
+
+  // Episodes
+  getEpisodes:      (personId, limit=50, offset=0) =>
+    _dbClient._call('GET', `/api/db/episodes/${encodeURIComponent(personId)}?limit=${limit}&offset=${offset}`),
+  syncEpisodes:     (personId, personName, rssUrl, itunesId) =>
+    _dbClient._call('POST', `/api/db/episodes/sync/${encodeURIComponent(personId)}`,
+                    { person_name: personName, rss_url: rssUrl, itunes_id: itunesId }),
+
+  // Guests
+  searchGuests:     (q)                         => _dbClient._call('GET',  `/api/db/guests?q=${encodeURIComponent(q)}`),
+  setEpisodeGuests: (episodeId, guests)          => _dbClient._call('PUT',  `/api/db/episodes/${encodeURIComponent(episodeId)}/guests`, { guests }),
+  getGuestEpisodes: (guestId, limit=20)          => _dbClient._call('GET',  `/api/db/guests/${guestId}/episodes?limit=${limit}`),
+
+  // Library
+  library:          (params={})                 => {
+    const qs = new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([,v]) => v !== null && v !== undefined && v !== ''))
+    ).toString();
+    return _dbClient._call('GET', `/api/db/library${qs ? '?' + qs : ''}`);
+  },
+};
+
 // ── STATE ──
 let persons      = [];
 let allEntries    = [];
@@ -5324,6 +5379,51 @@ async function _checkBackend() {
   } catch { _backendOnline = false; }
 }
 
+async function _runMigrations() {
+  if (!_backendOnline) return;
+
+  // Migrate pw-notes → SQLite notes table
+  if (!localStorage.getItem('pw-notes-migrated')) {
+    const raw = localStorage.getItem('pw-notes');
+    if (raw) {
+      try {
+        const notes = JSON.parse(raw);
+        const result = await _dbClient.migrateNotes(notes);
+        if (result !== null) {
+          localStorage.removeItem('pw-notes');
+          localStorage.setItem('pw-notes-migrated', '1');
+          console.log(`[Pulse] Migrated ${result.migrated} notes to SQLite`);
+        }
+      } catch (e) { console.warn('[Pulse] Notes migration failed:', e); }
+    } else {
+      // No notes to migrate — mark done anyway
+      localStorage.setItem('pw-notes-migrated', '1');
+    }
+  }
+
+  // Migrate pw-listened → SQLite content_status (status = 'done')
+  if (!localStorage.getItem('pw-listened-migrated')) {
+    const raw = localStorage.getItem('pw-listened');
+    if (raw) {
+      try {
+        const listenedIds = JSON.parse(raw);
+        for (const entryId of listenedIds) {
+          // Find the entry to get person_id and platform
+          const entry = allEntries.find(e => e.id === entryId);
+          if (entry) {
+            await _dbClient.setStatus(entryId, entry.personId, entry.platform, 'done');
+          }
+        }
+        localStorage.removeItem('pw-listened');
+        localStorage.setItem('pw-listened-migrated', '1');
+        console.log(`[Pulse] Migrated ${listenedIds.length} listened entries to SQLite`);
+      } catch (e) { console.warn('[Pulse] Listened migration failed:', e); }
+    } else {
+      localStorage.setItem('pw-listened-migrated', '1');
+    }
+  }
+}
+
 // ── NOTEBOOK LIBRARY UI HELPERS ──
 function _renderNotebookLibraryRows() {
   const container = document.getElementById('notebook-library-rows');
@@ -5583,7 +5683,7 @@ async function _checkAndShowCalibreBtn(entry) {
 loadState();
 loadConfig();
 _restoreVaultHandle();  // async — restores Obsidian vault handle if permission still granted
-_checkBackend();        // async — detect if Pulse backend is running on localhost:5001
+_checkBackend().then(_runMigrations);  // detect backend, then run one-time localStorage migrations
 renderAllCards();
 renderTagFilterRow();
 updateStatus();
