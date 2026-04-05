@@ -14,8 +14,14 @@ Define a list of people you follow (podcasters, researchers, thinkers) or public
 - **Filter by topic** — assign tags to people and filter by them via the TOPICS bar
 - **Entry detail modal** — click any item to read its description, add notes, and open it
 - **AI Notes** — generate structured research notes from YouTube transcripts or article text via Claude API
+- **🧠 Update Wiki** — after loading a transcript, call Claude to maintain a compounding per-person Obsidian wiki (living synthesis + ingest log)
 - **NotebookLM** — one-click to copy a video or article URL and open your notebook
 - **Obsidian** — write episode/article notes directly to your Obsidian vault
+- **Library tab** — paginated view of all tracked content with status, platform, guest, and Calibre filters
+- **All Episodes** — full episode archive per person, synced from RSS and iTunes
+- **Calibre integration** — push articles and episodes to your local Calibre library; link books to Calibre entries; read PDF text directly
+- **Manual articles** — add any web article or Calibre PDF to a person's timeline via the + Article button
+- **Status tracking** — mark entries as Unread / Want to Read / In Progress / Done; tracked in SQLite via the local backend
 - **Sources / Publications** — add a publication (e.g. Aeon) as a source; articles show with their individual author names
 
 All data is persisted in `localStorage`. Nothing is sent to any server except optional Claude API calls if you configure an API key.
@@ -105,8 +111,10 @@ When you open a podcast episode:
 - **📄 Load Transcript** — fetches YouTube captions inline (YouTube entries)
 - **🔍 Find Transcript** — Google search for a podcast transcript
 - **🤖 AI Notes** — fetches the YouTube transcript and generates structured research notes via Claude API
+- **🧠 Update Wiki** — after loading a transcript, calls Claude to update a compounding Obsidian wiki for that person: `index.md` (living synthesis of themes, positions, key quotes, guests) and `log.md` (append-only ingest log). Each episode integrates into the existing synthesis rather than replacing it. Requires Anthropic API key + Obsidian vault connected in Settings.
 - **📔 NotebookLM** — copies the YouTube URL to clipboard and opens your notebook
 - **📓 Obsidian** — writes the episode notes to your Obsidian vault
+- **→ Calibre** — push the episode/article to your local Calibre library (requires backend)
 
 ---
 
@@ -117,6 +125,40 @@ When you open a blog post or article:
 - **🤖 AI Notes** — fetches the full article text (via CORS proxy) and sends it to Claude for analysis. Produces: Main Argument, Key Points, Key Insights, Notable Quotes, People & Resources Mentioned, and a blank My Takeaways section.
 - **📔 NotebookLM** — copies the article URL to clipboard and opens your notebook (NotebookLM accepts web URLs as sources directly)
 - **📓 Obsidian** — writes the article notes to your Obsidian vault
+- **→ Calibre** — push the article to your local Calibre library (requires backend)
+
+### Manual articles
+
+Click **+ Article** on any person card to add an article that isn't in their RSS feed:
+
+- **Web URL** — paste any article URL; the app fetches the text for AI Notes
+- **Calibre PDF** — search your local Calibre library and link a book/PDF directly; the backend extracts text for AI Notes and wiki updates
+
+---
+
+## Library tab
+
+The **Library** tab shows all tracked content across all people in a single paginated list. Filter by:
+
+- **Status** — Unread / Want to Read / In Progress / Done
+- **Platform** — Podcast / YouTube / Blog / Article / Books
+- **Guest** — filter by person mentioned/appearing in episodes
+- **Calibre** — show only entries linked to your Calibre library
+
+Status is stored in SQLite via the local backend. The Library tab requires the backend to be running for status filters to work; it degrades gracefully to showing all entries when the backend is offline.
+
+---
+
+## Calibre integration
+
+Pulse can push articles and episodes to your local [Calibre](https://calibre-ebook.com/) library and read PDF text for AI analysis. Requires the local backend.
+
+| Action | Where |
+|---|---|
+| Push article / transcript to Calibre | **→ Calibre** button in any entry modal |
+| Link a book entry to its Calibre record | **🔗 Link Calibre** button on book entries |
+| Add a Calibre PDF as a manual article | **+ Article → 📚 Calibre** toggle on any person card |
+| Read Calibre PDF text for AI Notes / wiki | Automatic once a Calibre link is set |
 
 ---
 
@@ -159,14 +201,38 @@ Open **⚙ Settings** (top-right gear icon) to configure:
 
 ## Architecture
 
-Single-file vanilla HTML/CSS/JS. No frameworks, no build step, no dependencies.
+Single-file vanilla HTML/CSS/JS frontend. No frameworks, no build step, no dependencies.
 
 ```
 Pulse/
-├── index.html    # Entire application — HTML + CSS + JS in one file
-├── README.md     # This file
-└── CLAUDE.md     # Context for Claude Code sessions
+├── index.html          # Entire frontend — HTML + CSS + JS in one file
+├── backend/
+│   ├── server.py       # Optional Flask server (port 5001)
+│   ├── db.py           # SQLite module — status, notes, Calibre, episodes, guests
+│   └── requirements.txt
+├── README.md           # This file
+└── CLAUDE.md           # Context for Claude Code sessions
 ```
+
+### Optional backend
+
+A local Flask server (`backend/server.py`, port 5001) enables features that can't run in the browser:
+
+| Feature | Endpoint |
+|---|---|
+| YouTube transcript fetch | `GET /api/transcript/<video_id>` |
+| Calibre push | `POST /api/calibre/push` |
+| Calibre PDF text extraction | `GET /api/calibre/text/<id>` |
+| Calibre direct link storage | `PUT /api/db/calibre/<entry_id>` |
+| Status / notes / episode / guest data | 15 SQLite endpoints under `/api/db/` |
+
+```bash
+cd backend && python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+python server.py
+```
+
+The frontend detects the backend on page load and degrades gracefully when it's offline — all RSS/YouTube/podcast features work without it.
 
 ### CORS proxies
 
@@ -224,7 +290,7 @@ RSS feeds are fetched through a chain of three public CORS proxies, tried in ord
 {
   id:            string,      // personId + platform + link (max 80 chars)
   personId:      string,
-  platform:      'podcast'|'youtube'|'twitter'|'blog'|'books',
+  platform:      'podcast'|'youtube'|'twitter'|'blog'|'books'|'article',
   title:         string,
   link:          string,      // URL to open
   desc:          string,      // snippet, max 300 chars, HTML-stripped
@@ -238,11 +304,14 @@ RSS feeds are fetched through a chain of three public CORS proxies, tried in ord
 'pw-seen'       → string[]          entry IDs the user has opened (clears NEW badge)
 'pw-listened'   → string[]          entry IDs marked as listened
 'pw-entry-tags' → Record<id,string[]>  per-entry topic tags
-'pw-notes'      → Record<id,string>    per-entry manual + AI notes
+'pw-notes'      → Record<id,string>    per-entry manual + AI notes (migrated to SQLite on first backend connect)
 'pw-config'     → object            API keys and settings (anthropicKey, notebookLMUrl, etc.)
 
 // IndexedDB: 'pulse-episodes'   full episode history per person (iTunes)
 // IndexedDB: 'pulse-vault'      FileSystemDirectoryHandle for Obsidian vault
+
+// SQLite (backend): pulse.db
+// Tables: entry_status, entry_notes, calibre_links, episodes, guests
 ```
 
 ---
@@ -289,6 +358,13 @@ All data is stored in **`localStorage`**, which is **isolated per Chrome profile
 - [x] Stale-while-revalidate background refresh — feeds older than 6 hours auto-refresh on page load and card open, with pulsing badge indicator
 - [x] Role-based Add Person flow — role checkboxes (Podcaster / YouTuber / Blogger / Writer) drive parallel auto-search; top result auto-selected with inline paste override per role
 - [x] Concurrent refresh protection — per-person sequential queue prevents race conditions on double-refresh
+- [x] SQLite enrichment layer via optional backend — status, notes, Calibre links, episode archive, guest graph
+- [x] Library tab — paginated view of all tracked content with status / platform / guest / Calibre filters
+- [x] All Episodes archive per person — full history synced from RSS + iTunes, with status tracking
+- [x] Calibre integration — push articles/episodes to Calibre, link books, extract PDF text for AI analysis
+- [x] Manual article entries — add any web URL or Calibre PDF to a person's timeline
+- [x] Entry status tracking — Unread / Want to Read / In Progress / Done stored in SQLite
+- [x] LLM Wiki — 🧠 Update Wiki button calls Claude with loaded transcript to maintain a compounding Obsidian wiki per person (living synthesis index.md + append-only log.md)
 
 ### Planned
 - [ ] Export / import persons list as JSON (backup and cross-profile transfer)
