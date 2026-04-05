@@ -464,7 +464,9 @@ def db_library():
 # ── Startup ────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     skill_ok = os.path.isfile(os.path.join(SKILL_PATH, 'scripts', 'run.py'))
+    db_path  = _db.DB_PATH
     print(f'\n🔍 Pulse backend running on http://localhost:{PORT}')
+    print(f'   DB path:     {db_path} ({"✅ exists" if os.path.exists(db_path) else "🆕 will be created"})')
     print(f'   Skill path:  {SKILL_PATH}')
     print(f'   Skill found: {"✅" if skill_ok else "❌ NOT FOUND — check NOTEBOOKLM_SKILL_PATH env var"}\n')
     app.run(host='0.0.0.0', port=PORT, debug=True)
