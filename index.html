@@ -6433,7 +6433,7 @@ function openCalibrePicker(containerEl, onSelect, onCancel) {
         `<div class="calibre-picker-result" data-idx="${i}">
           <div>
             <div class="cp-title">${escHtml(r.title)}</div>
-            <div class="cp-meta">${escHtml(r.authors)}${r.formats.length ? ' · ' + r.formats.join(', ') : ''}</div>
+            <div class="cp-meta">${escHtml(r.authors)}${r.formats.length ? ' · ' + r.formats.map(escHtml).join(', ') : ''}</div>
           </div>
           <span style="color:var(--article);font-size:11px">Select →</span>
         </div>`
