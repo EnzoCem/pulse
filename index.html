@@ -4222,8 +4222,13 @@ function statusDotHtml(entry) {
   const status = getEntryStatus(entry.id);
   const label  = STATUS_META.find(s => s.value === status)?.label || 'Unread';
   return `<span class="status-dot" data-status="${status}" data-entry="${escHtml(entry.id)}"
+    data-person="${escHtml(entry.personId)}" data-platform="${escHtml(entry.platform)}"
     title="${label}"
-    onclick="event.stopPropagation();openStatusPicker(this,'${escHtml(entry.id)}','${escHtml(entry.personId)}','${escHtml(entry.platform)}')"></span>`;
+    onclick="event.stopPropagation();openStatusPickerFromDot(this)"></span>`;
+}
+
+function openStatusPickerFromDot(dot) {
+  openStatusPicker(dot, dot.dataset.entry, dot.dataset.person, dot.dataset.platform);
 }
 
 async function loadPersonStatuses(personId) {
