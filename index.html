@@ -6098,6 +6098,7 @@ async function generateAINotes() {
         const result = await _dbClient.getCalibreText(calibreId);
         if (result && result.text) {
           transcript = result.text;
+          _currentTranscriptText = result.text;
           sourceNote = 'Calibre PDF text';
         } else {
           throw new Error(result?.error === 'no_text'
