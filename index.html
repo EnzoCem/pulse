@@ -23,6 +23,7 @@
     --blog:      #a0e84a;
     --substack:  #e84aaa;
     --books:     #c084fc;
+    --article:   #f0a050;  /* amber — manually curated content */
     --radius:    6px;
   }
 
@@ -800,6 +801,7 @@
   .lib-platform-podcast { border-color: var(--podcast); color: var(--podcast); background: rgba(232,116,74,.08); }
   .lib-platform-youtube { border-color: var(--youtube); color: var(--youtube); background: rgba(232,74,74,.08); }
   .lib-platform-blog    { border-color: var(--blog);    color: var(--blog);    background: rgba(160,232,74,.08); }
+  .lib-platform-article { border-color: var(--article); color: var(--article); background: rgba(240,160,80,.08); }
   .lib-calibre-chip     { border-color: var(--books);   color: var(--books);   background: rgba(192,132,252,.08); }
 
   .lib-row {
@@ -1514,6 +1516,9 @@
         <button class="filter-chip" data-filter="books" onclick="setFilter('books')">
           <span class="chip-dot" style="background:var(--books)"></span>Books
         </button>
+        <button class="filter-chip" data-filter="article" onclick="setFilter('article')">
+          <span class="chip-dot" style="background:var(--article)"></span>Article
+        </button>
       </div>
       <div style="position:relative;display:flex;align-items:center">
         <input id="searchInput" type="text"
@@ -1622,6 +1627,7 @@ const PLATFORMS = {
   twitter: { label: 'X',       color: 'var(--twitter)', emoji: '𝕏' },
   blog:    { label: 'Blog',    color: 'var(--blog)',    emoji: '✍' },
   books:   { label: 'Books',   color: 'var(--books)',   emoji: '📚' },
+  article: { label: 'Article', color: 'var(--article)', emoji: '📝' },
 };
 
 function getPlatform(entry, person) {
@@ -5160,7 +5166,7 @@ const getText    = (el, tag) => { const n = el.querySelector(tag); return n ? (n
 const cleanText  = str => str.replace(/<[^>]*>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/\s+/g,' ').trim();
 const escHtml    = str => String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const getInitials = name => name.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
-const hexAlpha   = p => ({ podcast:'#2a1510', youtube:'#2a1010', twitter:'#101a2a', blog:'#141f10', books:'#1a1030' }[p]||'#1a1a22');
+const hexAlpha   = p => ({ podcast:'#2a1510', youtube:'#2a1010', twitter:'#101a2a', blog:'#141f10', books:'#1a1030', article:'#2a1a10' }[p]||'#1a1a22');
 
 // Returns false if the URL is obviously a social-media profile page rather than an RSS/Atom feed.
 // Used to skip bad twitter field values silently rather than counting them as fetch failures.
