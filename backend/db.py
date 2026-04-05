@@ -135,3 +135,62 @@ def get_person_statuses(person_id: str, path: str = DB_PATH) -> dict:
             (person_id,)
         ).fetchall()
     return {r['entry_id']: r['status'] for r in rows}
+
+
+# ── Notes ─────────────────────────────────────────────────────────────────────
+
+def get_notes(entry_id: str, path: str = DB_PATH) -> dict:
+    """Return {manual_note, ai_note, updated_at} for entry_id."""
+    with get_db(path) as conn:
+        row = conn.execute(
+            'SELECT manual_note, ai_note, updated_at FROM notes WHERE entry_id = ?',
+            (entry_id,)
+        ).fetchone()
+    if not row:
+        return {'manual_note': None, 'ai_note': None, 'updated_at': None}
+    return dict(row)
+
+
+def set_notes(entry_id: str, person_id: str,
+              manual_note: Optional[str] = None,
+              ai_note: Optional[str] = None,
+              path: str = DB_PATH) -> None:
+    """Upsert notes. Only updates the fields that are explicitly passed (not None)."""
+    with get_db(path) as conn:
+        existing = conn.execute(
+            'SELECT manual_note, ai_note FROM notes WHERE entry_id = ?', (entry_id,)
+        ).fetchone()
+        if existing:
+            new_manual = manual_note if manual_note is not None else existing['manual_note']
+            new_ai     = ai_note     if ai_note     is not None else existing['ai_note']
+            conn.execute(
+                'UPDATE notes SET manual_note=?, ai_note=?, updated_at=? WHERE entry_id=?',
+                (new_manual, new_ai, _now(), entry_id)
+            )
+        else:
+            conn.execute(
+                'INSERT INTO notes (entry_id, person_id, manual_note, ai_note, updated_at) VALUES (?,?,?,?,?)',
+                (entry_id, person_id, manual_note, ai_note, _now())
+            )
+
+
+def migrate_notes(legacy: dict, path: str = DB_PATH) -> int:
+    """
+    Migrate pw-notes from localStorage. legacy is {entry_id: note_string}.
+    Skips entries that already have a row in the notes table.
+    Returns count of rows inserted.
+    """
+    count = 0
+    with get_db(path) as conn:
+        for entry_id, note_text in legacy.items():
+            existing = conn.execute(
+                'SELECT 1 FROM notes WHERE entry_id = ?', (entry_id,)
+            ).fetchone()
+            if existing:
+                continue
+            conn.execute(
+                'INSERT INTO notes (entry_id, person_id, manual_note, ai_note, updated_at) VALUES (?,?,?,?,?)',
+                (entry_id, 'unknown', note_text, None, _now())
+            )
+            count += 1
+    return count
