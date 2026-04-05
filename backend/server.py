@@ -267,6 +267,34 @@ def db_get_calibre_link(entry_id):
     return jsonify(result)
 
 
+@app.route('/api/db/calibre/<entry_id>', methods=['PUT'])
+def db_set_calibre_link_direct(entry_id):
+    """Store a calibre link directly (for pre-existing Calibre books, without pushing content)."""
+    import json as _json
+    data          = request.json or {}
+    person_id     = (data.get('person_id')     or '').strip()
+    calibre_id    = data.get('calibre_id')
+    calibre_title = (data.get('calibre_title') or '').strip()
+    formats_raw   = data.get('formats', '[]')
+    content_type  = (data.get('content_type')  or 'article').strip()
+
+    if not all([person_id, calibre_id, calibre_title]):
+        return jsonify({'error': 'person_id, calibre_id, and calibre_title are required'}), 400
+    try:
+        calibre_id_int = int(calibre_id)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'calibre_id must be an integer'}), 400
+
+    try:
+        formats = _json.loads(formats_raw) if isinstance(formats_raw, str) else list(formats_raw)
+    except Exception:
+        formats = []
+
+    _db.set_calibre_link(entry_id, person_id, calibre_id_int, calibre_title,
+                         formats, content_type, path=_db.DB_PATH)
+    return jsonify({'ok': True})
+
+
 @app.route('/api/db/calibre/push', methods=['POST'])
 def db_push_to_calibre():
     """

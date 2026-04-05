@@ -206,3 +206,18 @@ def test_calibre_text_returns_no_text_when_no_extractable_format(client, tmp_pat
     data = resp.get_json()
     assert data['text'] == ''
     assert data.get('error') == 'no_text'
+
+
+def test_put_calibre_link_stores_and_retrieves(client):
+    resp = client.put('/api/db/calibre/entry-book-1',
+                      json={'person_id': 'p1', 'calibre_id': 42,
+                            'calibre_title': 'Thinking Fast and Slow',
+                            'formats': '["PDF","EPUB"]', 'content_type': 'book'})
+    assert resp.status_code == 200
+    assert resp.get_json()['ok'] is True
+
+    resp2 = client.get('/api/db/calibre/entry-book-1')
+    assert resp2.status_code == 200
+    data = resp2.get_json()
+    assert data['calibre_id'] == 42
+    assert data['content_type'] == 'book'
