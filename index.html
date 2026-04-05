@@ -1775,7 +1775,7 @@ const _dbClient = {
   setNotes:         (entryId, personId, manual, ai) =>
     _dbClient._call('PUT', `/api/db/notes/${encodeURIComponent(entryId)}`,
                     { person_id: personId, manual_note: manual ?? undefined, ai_note: ai ?? undefined }),
-  migrateNotes:     (notes)                     => _dbClient._call('POST', '/api/db/notes/migrate', { notes }),
+  migrateNotes:     (notes, personIds={})        => _dbClient._call('POST', '/api/db/notes/migrate', { notes, person_ids: personIds }),
 
   // Calibre
   getCalibreLink:   (entryId)                   => _dbClient._call('GET',  `/api/db/calibre/${encodeURIComponent(entryId)}`),
@@ -2411,9 +2411,12 @@ function saveState() {
   try {
     localStorage.setItem('pw-persons',    JSON.stringify(persons.map(p => ({ ...p, loading: false, backgroundRefreshing: false }))));
     localStorage.setItem('pw-seen',       JSON.stringify([...seenIds]));
-    localStorage.setItem('pw-listened',   JSON.stringify([...listenedIds]));
+    // Skip writing pw-listened and pw-notes once they've been migrated to SQLite
+    if (!localStorage.getItem('pw-listened-migrated'))
+      localStorage.setItem('pw-listened', JSON.stringify([...listenedIds]));
     localStorage.setItem('pw-entry-tags', JSON.stringify(entryTags));
-    localStorage.setItem('pw-notes',      JSON.stringify(entryNotes));
+    if (!localStorage.getItem('pw-notes-migrated'))
+      localStorage.setItem('pw-notes',    JSON.stringify(entryNotes));
   } catch(e) {}
 }
 
@@ -5911,7 +5914,13 @@ async function _runMigrations() {
     if (raw) {
       try {
         const notes = JSON.parse(raw);
-        const result = await _dbClient.migrateNotes(notes);
+        // Enrich with person_id by looking up each entry in allEntries
+        const personIds = {};
+        for (const entryId of Object.keys(notes)) {
+          const entry = allEntries.find(e => e.id === entryId);
+          if (entry) personIds[entryId] = entry.personId;
+        }
+        const result = await _dbClient.migrateNotes(notes, personIds);
         if (result !== null) {
           localStorage.removeItem('pw-notes');
           localStorage.setItem('pw-notes-migrated', '1');

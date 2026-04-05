@@ -77,14 +77,14 @@ def test_migrate_notes_inserts_all(db):
         'entry-a': 'Note for A',
         'entry-b': 'Note for B',
     }
-    count = migrate_notes(legacy, db)
+    count = migrate_notes(legacy, path=db)
     assert count == 2
     assert get_notes('entry-a', db)['manual_note'] == 'Note for A'
 
 
 def test_migrate_notes_skips_already_migrated(db):
     set_notes('entry-a', 'person-1', manual_note='Existing', path=db)
-    count = migrate_notes({'entry-a': 'New value'}, db)
+    count = migrate_notes({'entry-a': 'New value'}, path=db)
     assert count == 0  # already exists, skip
     assert get_notes('entry-a', db)['manual_note'] == 'Existing'
 

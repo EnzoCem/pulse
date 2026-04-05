@@ -174,12 +174,14 @@ def set_notes(entry_id: str, person_id: str,
             )
 
 
-def migrate_notes(legacy: dict, path: str = DB_PATH) -> int:
+def migrate_notes(legacy: dict, person_ids: dict = None, path: str = DB_PATH) -> int:
     """
     Migrate pw-notes from localStorage. legacy is {entry_id: note_string}.
+    person_ids is an optional {entry_id: person_id} dict enriched by the frontend.
     Skips entries that already have a row in the notes table.
     Returns count of rows inserted.
     """
+    _person_ids = person_ids or {}
     count = 0
     with get_db(path) as conn:
         for entry_id, note_text in legacy.items():
@@ -188,9 +190,10 @@ def migrate_notes(legacy: dict, path: str = DB_PATH) -> int:
             ).fetchone()
             if existing:
                 continue
+            pid = _person_ids.get(entry_id, 'unknown')
             conn.execute(
                 'INSERT INTO notes (entry_id, person_id, manual_note, ai_note, updated_at) VALUES (?,?,?,?,?)',
-                (entry_id, 'unknown', note_text, None, _now())
+                (entry_id, pid, note_text, None, _now())
             )
             count += 1
     return count

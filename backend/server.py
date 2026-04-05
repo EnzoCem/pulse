@@ -3,6 +3,7 @@ Pulse Backend — Phase 1: NotebookLM Q&A proxy
 Adapted from Brewing App backend/app.py
 """
 
+import html as _html
 import os
 import re
 import subprocess
@@ -174,9 +175,10 @@ def db_set_status(entry_id):
 def db_migrate_notes():
     data = request.json or {}
     notes = data.get('notes', {})
+    person_ids = data.get('person_ids', {})
     if not isinstance(notes, dict):
         return jsonify({'error': 'notes must be a dict {entry_id: note_string}'}), 400
-    count = _db.migrate_notes(notes, path=_db.DB_PATH)
+    count = _db.migrate_notes(notes, person_ids=person_ids, path=_db.DB_PATH)
     return jsonify({'migrated': count})
 
 
@@ -238,18 +240,20 @@ def db_push_to_calibre():
     if not _os.path.isfile(calibredb):
         return jsonify({'error': 'calibredb not found. Is Calibre installed?'}), 503
 
-    html = (f'<!DOCTYPE html><html><head><meta charset="utf-8">'
-            f'<title>{title}</title></head>'
-            f'<body><h1>{title}</h1>'
-            f'<pre style="white-space:pre-wrap;font-family:serif">{content}</pre>'
-            f'</body></html>')
+    safe_title   = _html.escape(title)
+    safe_content = _html.escape(content)
+    html_doc = (f'<!DOCTYPE html><html><head><meta charset="utf-8">'
+                f'<title>{safe_title}</title></head>'
+                f'<body><h1>{safe_title}</h1>'
+                f'<pre style="white-space:pre-wrap;font-family:serif">{safe_content}</pre>'
+                f'</body></html>')
 
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(
             mode='w', suffix='.html', delete=False, encoding='utf-8'
         ) as f:
-            f.write(html)
+            f.write(html_doc)
             tmp_path = f.name
 
         result = _subprocess.run(
@@ -284,8 +288,11 @@ def db_push_to_calibre():
 
 @app.route('/api/db/episodes/<person_id>', methods=['GET'])
 def db_get_episodes(person_id):
-    limit  = int(request.args.get('limit', 50))
-    offset = int(request.args.get('offset', 0))
+    try:
+        limit  = int(request.args.get('limit', 50))
+        offset = int(request.args.get('offset', 0))
+    except (ValueError, TypeError):
+        return jsonify({'error': 'limit and offset must be integers'}), 400
     sort   = request.args.get('sort', 'date_desc')
     return jsonify(_db.get_episodes(person_id, limit=limit, offset=offset, sort=sort,
                                     db_path=_db.DB_PATH))
@@ -331,7 +338,7 @@ def db_sync_episodes(person_id):
                 if not link:
                     continue
 
-                ep_id = (person_id + 'podcast' + link)[:80]
+                ep_id = f'{person_id}-podcast-{link}'[:80]
 
                 dur_str = _get(f'{{{itunes_ns}}}duration')
                 duration_sec = None
@@ -374,7 +381,7 @@ def db_sync_episodes(person_id):
                 if not link or link in existing_links:
                     continue
                 existing_links.add(link)
-                ep_id = (person_id + 'podcast' + link)[:80]
+                ep_id = f'{person_id}-podcast-{link}'[:80]
                 ms = item.get('trackTimeMillis') or 0
                 episodes.append({
                     'id': ep_id, 'person_id': person_id, 'person_name': person_name,
@@ -432,7 +439,10 @@ def db_search_guests():
 
 @app.route('/api/db/guests/<int:guest_id>/episodes', methods=['GET'])
 def db_get_guest_episodes(guest_id):
-    limit = int(request.args.get('limit', 20))
+    try:
+        limit = int(request.args.get('limit', 20))
+    except (ValueError, TypeError):
+        return jsonify({'error': 'limit must be an integer'}), 400
     return jsonify({'episodes': _db.get_guest_episodes(guest_id, limit=limit, path=_db.DB_PATH)})
 
 
@@ -448,8 +458,11 @@ def db_library():
     guest_id    = request.args.get('guest_id')
     calibre_only = request.args.get('calibre_only', '').lower() in ('1', 'true')
     sort        = request.args.get('sort', 'date_desc')
-    limit       = int(request.args.get('limit', 50))
-    offset      = int(request.args.get('offset', 0))
+    try:
+        limit  = int(request.args.get('limit', 50))
+        offset = int(request.args.get('offset', 0))
+    except (ValueError, TypeError):
+        return jsonify({'error': 'limit and offset must be integers'}), 400
 
     return jsonify(_db.query_library(
         status_filter=status, platform_filter=platform,
