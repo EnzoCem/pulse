@@ -202,7 +202,7 @@ def test_calibre_text_returns_no_text_when_no_extractable_format(client, tmp_pat
         mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
         resp = client.get('/api/calibre/text/42')
 
-    assert resp.status_code == 200
+    assert resp.status_code == 422
     data = resp.get_json()
     assert data['text'] == ''
     assert data.get('error') == 'no_text'

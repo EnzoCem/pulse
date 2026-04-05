@@ -575,15 +575,14 @@ def calibre_get_text(calibre_id):
                     text = f.read()
                 return jsonify({'text': text, 'format_used': 'PDF'})
 
-        return jsonify({'text': '', 'error': 'no_text'})
+        return jsonify({'text': '', 'error': 'no_text'}), 422
 
     except _subprocess.TimeoutExpired:
         return jsonify({'error': 'calibredb timed out'}), 504
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:
-        import shutil as _sh
-        _sh.rmtree(tmp_dir, ignore_errors=True)
+        _shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 # ── Startup ────────────────────────────────────────────────────────────────────
