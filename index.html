@@ -721,6 +721,34 @@
     display: inline-block; margin-bottom: 12px;
     font-weight: 500;
   }
+  /* Status controls */
+  .status-dot {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    cursor: pointer; flex-shrink: 0; vertical-align: middle;
+    border: 1px solid rgba(255,255,255,.15);
+    transition: transform .15s;
+  }
+  .status-dot:hover { transform: scale(1.4); }
+  .status-dot[data-status="unread"]      { background: var(--accent); }
+  .status-dot[data-status="want_to_read"]{ background: var(--accent2); }
+  .status-dot[data-status="in_progress"] { background: var(--podcast); }
+  .status-dot[data-status="done"]        { background: var(--blog); }
+  .status-dot[data-status="skipped"]     { background: var(--border); }
+
+  .status-picker {
+    position: absolute; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px; z-index: 200; display: flex; flex-direction: column;
+    gap: 4px; min-width: 140px; box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  }
+  .status-picker-item {
+    display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 5px;
+    cursor: pointer; font-size: 12px; font-family: 'JetBrains Mono', monospace;
+    color: var(--text);
+  }
+  .status-picker-item:hover { background: var(--surface); }
+  .status-picker-item .dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
   .modal-title {
     font-family: 'Playfair Display', serif;
     font-size: 20px; font-weight: 700; line-height: 1.35;
@@ -2406,6 +2434,7 @@ function openPersonDetail(personId) {
   const person = persons.find(p => p.id === personId);
   if (!person) return;
   ensureFresh(person);
+  loadPersonStatuses(person.id);
   currentPerson   = person;
   _detailFilter   = 'all';
   _detailFormTags = [...(person.tags || [])];
@@ -4134,6 +4163,77 @@ async function refreshAll() {
 }
 
 // ── ENTRY MODAL ──
+// ── Status controls ───────────────────────────────────────────────────────────
+// In-memory cache: entry_id → status (populated per-person on panel open)
+const _statusCache = new Map();
+
+const STATUS_META = [
+  { value: 'unread',       label: 'Unread',       color: 'var(--accent)' },
+  { value: 'want_to_read', label: 'Want to Read',  color: 'var(--accent2)' },
+  { value: 'in_progress',  label: 'In Progress',   color: 'var(--podcast)' },
+  { value: 'done',         label: 'Done',          color: 'var(--blog)' },
+  { value: 'skipped',      label: 'Skipped',       color: 'var(--border)' },
+];
+
+function getEntryStatus(entryId) {
+  return _statusCache.get(entryId) || 'unread';
+}
+
+async function setEntryStatus(entryId, personId, platform, status) {
+  _statusCache.set(entryId, status);
+  // Update all dots for this entry immediately
+  document.querySelectorAll(`.status-dot[data-entry="${CSS.escape(entryId)}"]`).forEach(dot => {
+    dot.dataset.status = status;
+    dot.title = STATUS_META.find(s => s.value === status)?.label || status;
+  });
+  if (_backendOnline) {
+    await _dbClient.setStatus(entryId, personId, platform, status);
+  }
+}
+
+function openStatusPicker(anchorEl, entryId, personId, platform) {
+  // Remove any existing picker
+  document.querySelector('.status-picker')?.remove();
+
+  const picker = document.createElement('div');
+  picker.className = 'status-picker';
+  const rect = anchorEl.getBoundingClientRect();
+  picker.style.cssText = `position:fixed;top:${rect.bottom + 4}px;left:${rect.left}px`;
+
+  STATUS_META.forEach(s => {
+    const item = document.createElement('div');
+    item.className = 'status-picker-item';
+    item.innerHTML = `<div class="dot" style="background:${s.color}"></div>${s.label}`;
+    item.addEventListener('click', () => {
+      setEntryStatus(entryId, personId, platform, s.value);
+      picker.remove();
+    });
+    picker.appendChild(item);
+  });
+
+  document.body.appendChild(picker);
+  // Close on outside click
+  setTimeout(() => document.addEventListener('click', function h() {
+    picker.remove(); document.removeEventListener('click', h);
+  }), 0);
+}
+
+function statusDotHtml(entry) {
+  const status = getEntryStatus(entry.id);
+  const label  = STATUS_META.find(s => s.value === status)?.label || 'Unread';
+  return `<span class="status-dot" data-status="${status}" data-entry="${escHtml(entry.id)}"
+    title="${label}"
+    onclick="event.stopPropagation();openStatusPicker(this,'${escHtml(entry.id)}','${escHtml(entry.personId)}','${escHtml(entry.platform)}')"></span>`;
+}
+
+async function loadPersonStatuses(personId) {
+  if (!_backendOnline) return;
+  const result = await _dbClient.getPersonStatuses(personId);
+  if (result) {
+    Object.entries(result).forEach(([id, status]) => _statusCache.set(id, status));
+  }
+}
+
 function openEntry(entry) {
   if (typeof entry === 'string') entry = JSON.parse(entry);
   seenIds.add(entry.id);
@@ -4147,9 +4247,12 @@ function openEntry(entry) {
 
   document.getElementById('modalContent').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-      <span class="modal-platform-tag" style="background:${pl.color}20;color:${pl.color}">
-        ${pl.emoji} ${pl.label}
-      </span>
+      <div style="display:flex;align-items:center;gap:8px">
+        ${statusDotHtml(entry)}
+        <span class="modal-platform-tag" style="background:${pl.color}20;color:${pl.color}">
+          ${pl.emoji} ${pl.label}
+        </span>
+      </div>
       <span style="font-size:11px;color:var(--muted)">${escHtml(person.name||'')}</span>
     </div>
     <div class="modal-title">${escHtml(entry.title)}</div>
