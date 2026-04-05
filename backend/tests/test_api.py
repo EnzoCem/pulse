@@ -158,3 +158,51 @@ def test_library_with_episode(client, patch_db):
     data = resp.get_json()
     assert data['total'] == 1
     assert data['items'][0]['status'] == 'unread'
+
+
+# ── Calibre text endpoint ──────────────────────────────────────────────────────
+
+from unittest.mock import patch, MagicMock
+import os, tempfile
+
+def test_calibre_text_returns_503_when_calibredb_missing(client):
+    with patch('shutil.which', return_value=None), \
+         patch('os.path.isfile', return_value=False):
+        resp = client.get('/api/calibre/text/42')
+    assert resp.status_code == 503
+    assert 'calibredb not found' in resp.get_json()['error']
+
+
+def test_calibre_text_returns_text_from_txt_export(client, tmp_path):
+    fake_txt = tmp_path / 'Book Title.txt'
+    fake_txt.write_text('Hello world content')
+
+    with patch('shutil.which', return_value='/usr/bin/calibredb'), \
+         patch('os.path.isfile', return_value=True), \
+         patch('subprocess.run') as mock_run, \
+         patch('tempfile.mkdtemp', return_value=str(tmp_path)), \
+         patch('glob.glob', side_effect=[
+             [str(fake_txt)],   # first glob: *.txt → found
+         ]):
+        mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+        resp = client.get('/api/calibre/text/42')
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['text'] == 'Hello world content'
+    assert data['format_used'] == 'TXT'
+
+
+def test_calibre_text_returns_no_text_when_no_extractable_format(client, tmp_path):
+    with patch('shutil.which', return_value='/usr/bin/calibredb'), \
+         patch('os.path.isfile', return_value=True), \
+         patch('subprocess.run') as mock_run, \
+         patch('tempfile.mkdtemp', return_value=str(tmp_path)), \
+         patch('glob.glob', return_value=[]):   # no txt, no pdf
+        mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+        resp = client.get('/api/calibre/text/42')
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['text'] == ''
+    assert data.get('error') == 'no_text'

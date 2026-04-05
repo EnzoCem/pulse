@@ -524,6 +524,68 @@ def db_library():
     ))
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Calibre — Text extraction
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/api/calibre/text/<int:calibre_id>', methods=['GET'])
+def calibre_get_text(calibre_id):
+    """
+    Export a Calibre book as plain text and return its content.
+    Tries TXT format first; falls back to PDF → pdftotext if available.
+    """
+    import shutil as _shutil, subprocess as _subprocess
+    import tempfile as _tempfile, glob as _glob, os as _os
+
+    calibredb = (_shutil.which('calibredb')
+                 or '/Applications/calibre.app/Contents/MacOS/calibredb')
+    if not _os.path.isfile(calibredb):
+        return jsonify({'error': 'calibredb not found. Is Calibre installed?'}), 503
+
+    tmp_dir = _tempfile.mkdtemp()
+    try:
+        # Export TXT format for this book ID
+        _subprocess.run(
+            [calibredb, 'export', '--to-dir', tmp_dir,
+             '--formats', 'txt', str(calibre_id)],
+            capture_output=True, text=True, timeout=30
+        )
+
+        # Prefer TXT
+        txt_files = _glob.glob(_os.path.join(tmp_dir, '*.txt'))
+        if txt_files:
+            with open(txt_files[0], 'r', encoding='utf-8', errors='replace') as f:
+                text = f.read()
+            return jsonify({'text': text, 'format_used': 'TXT'})
+
+        # Fall back to PDF + pdftotext
+        _subprocess.run(
+            [calibredb, 'export', '--to-dir', tmp_dir,
+             '--formats', 'pdf', str(calibre_id)],
+            capture_output=True, text=True, timeout=30
+        )
+        pdf_files = _glob.glob(_os.path.join(tmp_dir, '*.pdf'))
+        pdftotext = _shutil.which('pdftotext')
+        if pdf_files and pdftotext:
+            txt_out = pdf_files[0] + '.txt'
+            _subprocess.run([pdftotext, pdf_files[0], txt_out],
+                            capture_output=True, timeout=30)
+            if _os.path.exists(txt_out):
+                with open(txt_out, 'r', encoding='utf-8', errors='replace') as f:
+                    text = f.read()
+                return jsonify({'text': text, 'format_used': 'PDF'})
+
+        return jsonify({'text': '', 'error': 'no_text'})
+
+    except _subprocess.TimeoutExpired:
+        return jsonify({'error': 'calibredb timed out'}), 504
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        import shutil as _sh
+        _sh.rmtree(tmp_dir, ignore_errors=True)
+
+
 # ── Startup ────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     skill_ok = os.path.isfile(os.path.join(SKILL_PATH, 'scripts', 'run.py'))
