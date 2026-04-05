@@ -5535,6 +5535,63 @@ function parseWikiResponse(text) {
   return pages;
 }
 
+async function updateWikiFromTranscript() {
+  const entry  = _currentModalEntry;
+  const person = persons.find(p => p.id === entry?.personId) || {};
+
+  if (!pwConfig.anthropicKey) {
+    _showToast('Add your Anthropic API key in ⚙ Settings first', 3500);
+    toggleSettings();
+    return;
+  }
+  if (!_vaultHandle) {
+    _showToast('No Obsidian vault selected — pick one in ⚙ Settings', 3500);
+    toggleSettings();
+    return;
+  }
+  if (!_currentTranscriptText) {
+    _showToast('Load a transcript first, then click Update Wiki', 3500);
+    return;
+  }
+
+  const btn = document.getElementById('wikiBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '🧠 Reading wiki…'; }
+
+  try {
+    const safeFolder = sanitizeFileName(person.name || entry.personId);
+    const [existingIndex, existingLog] = await Promise.all([
+      readObsidianNote(`${safeFolder}/index.md`),
+      readObsidianNote(`${safeFolder}/log.md`),
+    ]);
+
+    if (btn) btn.textContent = '🧠 Calling Claude…';
+
+    const { system, user } = buildWikiUpdatePrompt(
+      entry, person, _currentTranscriptText, existingIndex, existingLog
+    );
+    const responseText = await callClaude(pwConfig.anthropicKey, system, user, 4096);
+
+    const pages = parseWikiResponse(responseText);
+    if (Object.keys(pages).length === 0) {
+      throw new Error('Claude returned no wiki files — unexpected response format');
+    }
+
+    if (btn) btn.textContent = '🧠 Writing…';
+    let written = 0;
+    for (const [path, content] of Object.entries(pages)) {
+      const ok = await writeObsidianNote(path, content);
+      if (ok) written++;
+    }
+
+    if (btn) { btn.disabled = false; btn.textContent = '🧠 Wiki ✓'; }
+    _showToast(`✓ Wiki updated — ${written} file${written !== 1 ? 's' : ''} written to Obsidian`);
+
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '🧠 Update Wiki'; }
+    _showToast('Wiki update failed: ' + e.message, 5000);
+  }
+}
+
 // ── OBSIDIAN ACTIONS ──
 
 async function sendEpisodeToObsidian(entryArg) {
