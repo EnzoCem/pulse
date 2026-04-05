@@ -141,6 +141,34 @@ Pulse/
 | `_findSourceRSS(name)` | Auto-discover RSS feed for a publication by name |
 | `_looksLikeRssUrl(url)` | Returns true for RSS URLs AND bare @username Twitter handles |
 | `_extractTwitterHandle(val)` | Extract bare username from @user / x.com/user; null for full URLs |
+| `callClaude(apiKey, systemPrompt, userContent, maxTokens)` | Call Claude API (claude-sonnet-4-6); `maxTokens` optional, defaults to 1024 |
+| `readObsidianNote(relativePath)` | Read a file from the connected Obsidian vault; returns `null` if missing or permission denied |
+| `writeObsidianNote(relativePath, content)` | Write markdown to vault subfolder, creating directories as needed |
+| `buildWikiUpdatePrompt(entry, person, transcript, existingIndex, existingLog)` | Build Claude `{ system, user }` messages for wiki maintenance; handles fresh vs existing wiki |
+| `parseWikiResponse(text)` | Extract `<wiki_file path="...">` blocks from Claude response into `{ path: content }` map |
+| `updateWikiFromTranscript()` | Orchestrate full wiki update: read existing → call Claude → parse → write to Obsidian |
+| `_refreshWikiBtn()` | Enable/disable `#wikiBtn` based on whether `_currentTranscriptText` is set |
+
+---
+
+## LLM Wiki (Obsidian integration)
+
+Pulse can maintain a compounding personal knowledge wiki in Obsidian for each tracked person. The wiki is written by Claude and grows richer with every episode ingested.
+
+**How it works:**
+1. Open a YouTube or podcast entry modal
+2. Load a transcript (YouTube: "📄 Load Transcript"; podcast: find transcript via the transcript link)
+3. Once transcript is loaded, **🧠 Update Wiki** button becomes active
+4. Clicking it reads existing wiki files for that person, calls Claude API with the transcript + existing state, and writes back two files:
+   - `{Obsidian subfolder}/{Person Name}/index.md` — living synthesis: themes, positions, key quotes, guests
+   - `{Obsidian subfolder}/{Person Name}/log.md` — append-only ingest log (`## [YYYY-MM-DD] Episode Title`)
+5. Each subsequent episode integrates into the existing synthesis rather than replacing it
+
+**Requirements:** Anthropic API key in Settings + Obsidian vault connected in Settings.
+
+**The wiki button:** Only shown for YouTube and podcast entries (not blog/twitter, where `_currentTranscriptText` is never populated). Starts disabled on modal open; enabled by `_refreshWikiBtn()` once transcript loads.
+
+**Path safety:** `updateWikiFromTranscript` validates Claude's returned file paths against an `expectedPaths` Set (`{safeFolder}/index.md` and `{safeFolder}/log.md`) before writing — unexpected paths are silently skipped.
 
 ---
 
@@ -264,6 +292,12 @@ The frontend checks `_backendOnline` (set by `_checkBackend()` on page load) and
    - Push notifications via WebSockets
 7. **Electron wrapper** — Desktop app, no CORS issues, system tray
 8. **Mobile PWA** — Service worker + manifest for home screen install
+
+### Completed features (recent)
+- ✅ **LLM Wiki** — "🧠 Update Wiki" button in entry modal; calls Claude API with loaded transcript to maintain a compounding per-person Obsidian wiki (`index.md` synthesis + `log.md` ingest log)
+- ✅ **DB architecture Phase 1** — SQLite enrichment layer (status, notes, Calibre links, episode archive, guest graph, library view)
+- ✅ **Library tab** — paginated view of all tracked content with status/platform/guest filters
+- ✅ **All Episodes** — full episode archive per person with sync from RSS + iTunes
 
 ---
 

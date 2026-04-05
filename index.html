@@ -1602,6 +1602,7 @@
       <button id="notebookLMBtn"  class="btn btn-ghost" style="display:none" onclick="openInNotebookLM()">📔 NotebookLM</button>
       <button id="aiNotesBtn"     class="btn btn-ghost" style="display:none" onclick="generateAINotes()">🤖 AI Notes</button>
       <button id="obsidianBtn"    class="btn btn-ghost" style="display:none" onclick="sendEpisodeToObsidian()">📓 Obsidian</button>
+      <button id="wikiBtn"        class="btn btn-ghost" style="display:none" onclick="updateWikiFromTranscript()" title="Update this person's Obsidian wiki with the loaded transcript">🧠 Update Wiki</button>
       <button id="askSourcesBtn"  class="btn btn-ghost" style="display:none" onclick="askMySourcesToggle()" title="Query your curated NotebookLM notebooks">📔 My Notebooks</button>
       <a id="calibreBtn"     href="#" target="_blank" rel="noopener" class="btn btn-ghost"   style="display:none">📚 In Calibre</a>
       <a id="modalLink"      href="#" target="_blank" rel="noopener" class="btn btn-primary" style="display:none">Open →</a>
@@ -2276,6 +2277,7 @@ async function loadYouTubeTranscript() {
             </div>
             <div class="transcript-body">${escHtml(data.transcript)}</div>`;
           _currentTranscriptText = data.transcript;
+          _refreshWikiBtn();
           btn.textContent = '📄 Transcript ✓';
           return;
         }
@@ -2340,6 +2342,7 @@ async function loadYouTubeTranscript() {
       </div>
       <div class="transcript-body">${escHtml(text)}</div>`;
     _currentTranscriptText = text;
+    _refreshWikiBtn();
     btn.textContent = '📄 Transcript ✓';
 
   } catch(e) {
@@ -4767,6 +4770,11 @@ function openEntry(entry) {
   nbBtn.style.display  = 'none';
   aiBtn.style.display  = 'none';
   obsBtn.style.display = 'none';
+  const wikiBtn = document.getElementById('wikiBtn');
+  wikiBtn.style.display  = 'none';
+  wikiBtn.disabled       = true;
+  wikiBtn.style.opacity  = '';
+  wikiBtn.textContent    = '🧠 Update Wiki';
   ytBtn.disabled = false;
   aiBtn.disabled = false;
   obsBtn.disabled = false;
@@ -4783,6 +4791,7 @@ function openEntry(entry) {
     nbBtn.style.display  = '';   // NotebookLM — video URL is entry.link
     aiBtn.style.display  = '';   // AI Notes
     obsBtn.style.display = '';   // Obsidian
+    wikiBtn.style.display = '';
 
   } else if (entry.platform === 'podcast') {
     if (entry.transcriptUrl) {
@@ -4811,6 +4820,7 @@ function openEntry(entry) {
     nbBtn.style.display  = '';   // NotebookLM — video URL resolved async by findYouTubeForPodcast
     aiBtn.style.display  = '';   // AI Notes
     obsBtn.style.display = '';   // Obsidian
+    wikiBtn.style.display = '';
 
   } else if (entry.platform === 'blog' || entry.platform === 'twitter') {
     // Blog / Substack / X: fetch article text for AI Notes; use URL for NotebookLM
@@ -4821,6 +4831,8 @@ function openEntry(entry) {
     // Books: check Calibre library in background
     if (pwConfig.calibreUrl) _checkAndShowCalibreBtn(entry);
   }
+
+  _refreshWikiBtn();
 
   // → Calibre push button for non-book entries (youtube, podcast, blog)
   if (['youtube', 'podcast', 'blog'].includes(entry.platform) && _backendOnline) {
@@ -4907,6 +4919,17 @@ function _syncListenedBtn() {
   btn.textContent       = done ? '✓ Listened' : '✓ Mark as Listened';
   btn.style.color       = done ? 'var(--blog)' : '';
   btn.style.borderColor = done ? 'var(--blog)' : '';
+}
+
+function _refreshWikiBtn() {
+  const btn = document.getElementById('wikiBtn');
+  if (!btn || btn.style.display === 'none') return;
+  const ready       = !!_currentTranscriptText;
+  btn.disabled      = !ready;
+  btn.style.opacity = ready ? '' : '0.45';
+  btn.title = ready
+    ? "Update this person's Obsidian wiki with the loaded transcript"
+    : 'Load a transcript first, then click Update Wiki';
 }
 
 // ── EPISODE HISTORY (IndexedDB) ──
@@ -5357,6 +5380,26 @@ async function writeObsidianNote(relativePath, content) {
   return true;
 }
 
+// Read markdown from vault — returns null if file or directory doesn't exist yet
+async function readObsidianNote(relativePath) {
+  if (!_vaultHandle) return null;
+  const perm = await _vaultHandle.queryPermission({ mode: 'readwrite' });
+  if (perm !== 'granted') return null;
+  const subfolder = pwConfig.obsidianSubfolder || 'Pulse';
+  const allParts  = [subfolder, ...relativePath.split('/')].filter(Boolean);
+  try {
+    let dir = _vaultHandle;
+    for (const part of allParts.slice(0, -1)) {
+      dir = await dir.getDirectoryHandle(part);
+    }
+    const fileHandle = await dir.getFileHandle(allParts[allParts.length - 1]);
+    const file       = await fileHandle.getFile();
+    return await file.text();
+  } catch(_) {
+    return null;   // directory or file doesn't exist — fresh wiki
+  }
+}
+
 // Sanitise a string for use as an Obsidian filename / folder name
 function sanitizeFileName(str) {
   return (str || 'Untitled')
@@ -5449,6 +5492,137 @@ function buildPersonNote(person) {
   ].filter(s => s !== '').join('\n');
 
   return frontmatter + '\n\n' + body;
+}
+
+// ── LLM WIKI ──
+
+function buildWikiUpdatePrompt(entry, person, transcript, existingIndex, existingLog) {
+  const personName = person.name || 'Unknown';
+  const safeFolder = sanitizeFileName(personName);
+  const epDate     = entry.date
+    ? new Date(entry.date).toISOString().slice(0, 10)
+    : new Date().toISOString().slice(0, 10);
+  const indexPath  = `${safeFolder}/index.md`;
+  const logPath    = `${safeFolder}/log.md`;
+
+  const system = `You maintain a personal knowledge wiki about ${personName} in Obsidian markdown.
+
+You manage two files:
+1. **${indexPath}** — A living synthesis page. Not a list of episode summaries — a structured picture of this person's recurring themes, notable positions, key quotes, and significant guests. When you update it, revise and integrate; do not just append new episode summaries.
+2. **${logPath}** — An append-only chronological log. One entry per ingested episode. Each entry starts with ## [YYYY-MM-DD] Episode Title.
+
+When you process a new transcript:
+- Extract: main topics, notable claims or positions, memorable quotes, guests mentioned or interviewed.
+- Update ${indexPath}: integrate new information into existing themes; add new themes only if genuinely new; note any evolution or contradiction with past positions.
+- Append one new entry to ${logPath}: ## [${epDate}] ${(entry.title || 'Untitled').replace(/`/g, "'")} followed by a 2–3 sentence summary and a tags line like > tags: topic1, topic2.
+
+Output ONLY the updated file contents using this exact format — no commentary, no markdown code fences around the blocks:
+<wiki_file path="${indexPath}">
+...full updated content...
+</wiki_file>
+<wiki_file path="${logPath}">
+...full updated log with new entry appended at the bottom...
+</wiki_file>`;
+
+  const userLines = [
+    `Episode: ${entry.title || 'Untitled'}`,
+    `Date: ${epDate}`,
+    `Platform: ${entry.platform}`,
+    `Person: ${personName}`,
+  ];
+
+  if (existingIndex) {
+    userLines.push(`\n---\nCurrent ${indexPath}:\n${existingIndex}`);
+  } else {
+    userLines.push(`\n---\nNote: ${indexPath} does not exist yet — create it fresh.`);
+  }
+
+  if (existingLog) {
+    userLines.push(`\n---\nCurrent ${logPath}:\n${existingLog}`);
+  } else {
+    userLines.push(`\n---\nNote: ${logPath} does not exist yet — create it fresh.`);
+  }
+
+  userLines.push(`\n---\nTranscript:\n${transcript}`);
+
+  return { system, user: userLines.join('\n') };
+}
+
+function parseWikiResponse(text) {
+  const pages = {};
+  const re = /<wiki_file path="([^"]+)">([\s\S]*?)<\/wiki_file>/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    pages[m[1]] = m[2].replace(/^\n/, '').replace(/\n$/, '');
+  }
+  return pages;
+}
+
+async function updateWikiFromTranscript() {
+  const entry  = _currentModalEntry;
+  const person = persons.find(p => p.id === entry?.personId) || {};
+
+  if (!entry) return;
+
+  if (!pwConfig.anthropicKey) {
+    _showToast('Add your Anthropic API key in ⚙ Settings first', 3500);
+    toggleSettings();
+    return;
+  }
+  if (!_vaultHandle) {
+    _showToast('No Obsidian vault selected — pick one in ⚙ Settings', 3500);
+    toggleSettings();
+    return;
+  }
+  if (!_currentTranscriptText) {
+    _showToast('Load a transcript first, then click Update Wiki', 3500);
+    return;
+  }
+
+  const btn = document.getElementById('wikiBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '🧠 Reading wiki…'; }
+
+  if (!await _ensureVaultPermission()) {
+    _showToast('Obsidian vault permission denied — reconnect in ⚙ Settings', 4000);
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+    return;
+  }
+
+  try {
+    const safeFolder = sanitizeFileName(person.name || entry.personId);
+    const [existingIndex, existingLog] = await Promise.all([
+      readObsidianNote(`${safeFolder}/index.md`),
+      readObsidianNote(`${safeFolder}/log.md`),
+    ]);
+
+    if (btn) btn.textContent = '🧠 Calling Claude…';
+
+    const { system, user } = buildWikiUpdatePrompt(
+      entry, person, _currentTranscriptText, existingIndex, existingLog
+    );
+    const responseText = await callClaude(pwConfig.anthropicKey, system, user, 4096);
+
+    const pages = parseWikiResponse(responseText);
+    if (Object.keys(pages).length === 0) {
+      throw new Error('Claude returned no wiki files — unexpected response format');
+    }
+
+    if (btn) btn.textContent = '🧠 Writing…';
+    const expectedPaths = new Set([`${safeFolder}/index.md`, `${safeFolder}/log.md`]);
+    let written = 0;
+    for (const [path, content] of Object.entries(pages)) {
+      if (!expectedPaths.has(path)) continue;
+      const ok = await writeObsidianNote(path, content);
+      if (ok) written++;
+    }
+
+    if (btn) { btn.disabled = false; btn.textContent = '🧠 Wiki ✓'; }
+    _showToast(`✓ Wiki updated — ${written} file${written !== 1 ? 's' : ''} written to Obsidian`);
+
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '🧠 Update Wiki'; }
+    _showToast('Wiki update failed: ' + e.message, 5000);
+  }
 }
 
 // ── OBSIDIAN ACTIONS ──
@@ -5664,7 +5838,7 @@ async function getYouTubeTranscriptText(videoId) {
   } catch(_) { return null; }
 }
 
-async function callClaude(apiKey, systemPrompt, userContent) {
+async function callClaude(apiKey, systemPrompt, userContent, maxTokens = 1024) {
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -5675,7 +5849,7 @@ async function callClaude(apiKey, systemPrompt, userContent) {
     },
     body: JSON.stringify({
       model:      'claude-sonnet-4-6',
-      max_tokens: 1024,
+      max_tokens: maxTokens,
       system:     systemPrompt,
       messages:   [{ role: 'user', content: userContent }],
     }),
