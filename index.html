@@ -5664,7 +5664,7 @@ async function getYouTubeTranscriptText(videoId) {
   } catch(_) { return null; }
 }
 
-async function callClaude(apiKey, systemPrompt, userContent) {
+async function callClaude(apiKey, systemPrompt, userContent, maxTokens = 1024) {
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -5675,7 +5675,7 @@ async function callClaude(apiKey, systemPrompt, userContent) {
     },
     body: JSON.stringify({
       model:      'claude-sonnet-4-6',
-      max_tokens: 1024,
+      max_tokens: maxTokens,
       system:     systemPrompt,
       messages:   [{ role: 'user', content: userContent }],
     }),
