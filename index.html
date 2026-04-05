@@ -5357,6 +5357,26 @@ async function writeObsidianNote(relativePath, content) {
   return true;
 }
 
+// Read markdown from vault — returns null if file or directory doesn't exist yet
+async function readObsidianNote(relativePath) {
+  if (!_vaultHandle) return null;
+  const perm = await _vaultHandle.queryPermission({ mode: 'readwrite' });
+  if (perm !== 'granted') return null;
+  const subfolder = pwConfig.obsidianSubfolder || 'Pulse';
+  const allParts  = [subfolder, ...relativePath.split('/')].filter(Boolean);
+  try {
+    let dir = _vaultHandle;
+    for (const part of allParts.slice(0, -1)) {
+      dir = await dir.getDirectoryHandle(part);
+    }
+    const fileHandle = await dir.getFileHandle(allParts[allParts.length - 1]);
+    const file       = await fileHandle.getFile();
+    return await file.text();
+  } catch(_) {
+    return null;   // directory or file doesn't exist — fresh wiki
+  }
+}
+
 // Sanitise a string for use as an Obsidian filename / folder name
 function sanitizeFileName(str) {
   return (str || 'Untitled')
