@@ -194,3 +194,191 @@ def migrate_notes(legacy: dict, path: str = DB_PATH) -> int:
             )
             count += 1
     return count
+
+
+# ── Calibre links ─────────────────────────────────────────────────────────────
+
+def get_calibre_link(entry_id: str, path: str = DB_PATH) -> Optional[dict]:
+    """Return calibre link record for entry_id, or None."""
+    with get_db(path) as conn:
+        row = conn.execute(
+            'SELECT * FROM calibre_links WHERE entry_id = ?', (entry_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def set_calibre_link(entry_id: str, person_id: str, calibre_id: int,
+                     calibre_title: str, formats: list, content_type: str,
+                     path: str = DB_PATH) -> None:
+    """Upsert a calibre link record."""
+    with get_db(path) as conn:
+        conn.execute("""
+            INSERT INTO calibre_links
+              (entry_id, person_id, calibre_id, calibre_title, formats, content_type, pushed_at)
+            VALUES (?,?,?,?,?,?,?)
+            ON CONFLICT(entry_id) DO UPDATE SET
+              calibre_id=excluded.calibre_id, calibre_title=excluded.calibre_title,
+              formats=excluded.formats, pushed_at=excluded.pushed_at
+        """, (entry_id, person_id, calibre_id, calibre_title,
+              json.dumps(formats), content_type, _now()))
+
+
+def get_person_calibre_links(person_id: str, path: str = DB_PATH) -> dict:
+    """Return {entry_id: {calibre_id, formats, content_type}} for a person."""
+    with get_db(path) as conn:
+        rows = conn.execute(
+            'SELECT entry_id, calibre_id, formats, content_type FROM calibre_links WHERE person_id = ?',
+            (person_id,)
+        ).fetchall()
+    return {r['entry_id']: {'calibre_id': r['calibre_id'],
+                             'formats': json.loads(r['formats']),
+                             'content_type': r['content_type']}
+            for r in rows}
+
+
+# ── Episodes ──────────────────────────────────────────────────────────────────
+
+def upsert_episodes(episodes: list, path: str = DB_PATH) -> None:
+    """Bulk upsert episode records. Each item is a dict matching the episodes schema."""
+    now = _now()
+    with get_db(path) as conn:
+        for ep in episodes:
+            conn.execute("""
+                INSERT INTO episodes
+                  (id, person_id, person_name, platform, title, link,
+                   description, date, duration_sec, episode_number, itunes_episode_id, synced_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(id) DO UPDATE SET
+                  title=excluded.title, description=excluded.description,
+                  duration_sec=excluded.duration_sec, episode_number=excluded.episode_number,
+                  synced_at=excluded.synced_at
+            """, (ep['id'], ep['person_id'], ep['person_name'], ep['platform'],
+                  ep['title'], ep['link'], ep.get('description'), ep.get('date'),
+                  ep.get('duration_sec'), ep.get('episode_number'),
+                  ep.get('itunes_episode_id'), now))
+
+
+def get_episodes(person_id: str, limit: int = 50, offset: int = 0,
+                 sort: str = 'date_desc', db_path: str = DB_PATH) -> dict:
+    """Return paginated episodes for a person with total count."""
+    order = 'date DESC' if sort == 'date_desc' else 'date ASC'
+    with get_db(db_path) as conn:
+        total = conn.execute(
+            'SELECT COUNT(*) FROM episodes WHERE person_id = ?', (person_id,)
+        ).fetchone()[0]
+        rows = conn.execute(
+            f'SELECT * FROM episodes WHERE person_id = ? ORDER BY {order} LIMIT ? OFFSET ?',
+            (person_id, limit, offset)
+        ).fetchall()
+    return {'episodes': [dict(r) for r in rows], 'total': total}
+
+
+# ── Guests ────────────────────────────────────────────────────────────────────
+
+def name_to_slug(name: str) -> str:
+    """Convert 'Elon Musk' → 'elon-musk'."""
+    return re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
+
+
+def extract_guests_from_title(title: str) -> list:
+    """
+    Heuristic guest extraction from episode title.
+    Looks for patterns like: 'Episode Title | Guest Name' or 'Guest Name — Topic'.
+    Returns list of guest name strings (may be empty).
+    """
+    # Pattern: guest name between em-dash and pipe: "#431 — Elon Musk | Topic"
+    between_m = re.search(r'[–—]\s+(.+?)\s*\|', title)
+    if between_m:
+        candidate = between_m.group(1).strip()
+        words = candidate.split()
+        if 1 <= len(words) <= 4 and re.match(r'^[A-Z]', candidate) and not candidate.startswith('http'):
+            return [candidate]
+
+    # Patterns where guest name comes AFTER the separator
+    after_patterns = [
+        r'\s*\|\s*(.+)',           # "Ep 431 | Elon Musk"
+        r'\s+feat(?:uring)?\.?\s+(.+)',  # "Ep featuring Elon Musk"
+        r'\s+with\s+([A-Z][^|]+)',  # "Conversation with Elon Musk"
+    ]
+    # Patterns where guest name comes BEFORE the separator
+    before_patterns = [
+        r'^(.+?)\s+[–—]\s+[A-Z]',  # "Elon Musk — Tesla and SpaceX" (guest first)
+    ]
+
+    for pattern in after_patterns:
+        m = re.search(pattern, title, re.IGNORECASE)
+        if m:
+            guest_part = m.group(1).strip()
+            # Split multiple guests on comma or &
+            candidates = [g.strip() for g in re.split(r',\s*|\s+&\s+|\s+and\s+', guest_part)]
+            # Keep only plausible names: 2–40 chars, starts with uppercase, no URL
+            guests = [g for g in candidates
+                      if 2 < len(g) <= 40
+                      and not g.startswith('http')
+                      and re.match(r'^[A-Z]', g)]
+            if guests:
+                return guests
+
+    for pattern in before_patterns:
+        m = re.match(pattern, title)
+        if m:
+            candidate = m.group(1).strip()
+            # Must look like a name (2+ words, each capitalised, no numbers)
+            words = candidate.split()
+            if 2 <= len(words) <= 4 and all(w[0].isupper() for w in words):
+                return [candidate]
+
+    return []
+
+
+def _upsert_guest(conn: sqlite3.Connection, name: str) -> int:
+    """Ensure a guest row exists for name. Returns guest id."""
+    slug = name_to_slug(name)
+    existing = conn.execute(
+        'SELECT id FROM guests WHERE slug = ?', (slug,)
+    ).fetchone()
+    if existing:
+        return existing['id']
+    conn.execute(
+        'INSERT INTO guests (name, slug) VALUES (?,?)', (name, slug)
+    )
+    return conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+
+
+def set_episode_guests(episode_id: str, guests: list, path: str = DB_PATH) -> None:
+    """
+    Replace all guest associations for episode_id.
+    guests is a list of {'name': str, 'source': 'manual'|'ai_extracted'|'rss_parsed'}.
+    """
+    with get_db(path) as conn:
+        conn.execute('DELETE FROM episode_guests WHERE episode_id = ?', (episode_id,))
+        for g in guests:
+            guest_id = _upsert_guest(conn, g['name'])
+            conn.execute(
+                'INSERT OR IGNORE INTO episode_guests (episode_id, guest_id, source) VALUES (?,?,?)',
+                (episode_id, guest_id, g['source'])
+            )
+
+
+def search_guests(query: str, path: str = DB_PATH) -> list:
+    """Search guests by name prefix. Returns list of {id, name, slug, person_id}."""
+    pattern = f'%{query}%'
+    with get_db(path) as conn:
+        rows = conn.execute(
+            'SELECT id, name, slug, person_id FROM guests WHERE name LIKE ? OR slug LIKE ? LIMIT 20',
+            (pattern, pattern)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_guest_episodes(guest_id: int, limit: int = 20, path: str = DB_PATH) -> list:
+    """Return episodes for a guest, newest first."""
+    with get_db(path) as conn:
+        rows = conn.execute("""
+            SELECT e.*, eg.source as guest_source
+            FROM episodes e
+            JOIN episode_guests eg ON eg.episode_id = e.id
+            WHERE eg.guest_id = ?
+            ORDER BY e.date DESC LIMIT ?
+        """, (guest_id, limit)).fetchall()
+    return [dict(r) for r in rows]
