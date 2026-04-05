@@ -1602,6 +1602,7 @@
       <button id="notebookLMBtn"  class="btn btn-ghost" style="display:none" onclick="openInNotebookLM()">📔 NotebookLM</button>
       <button id="aiNotesBtn"     class="btn btn-ghost" style="display:none" onclick="generateAINotes()">🤖 AI Notes</button>
       <button id="obsidianBtn"    class="btn btn-ghost" style="display:none" onclick="sendEpisodeToObsidian()">📓 Obsidian</button>
+      <button id="wikiBtn"        class="btn btn-ghost" style="display:none" onclick="updateWikiFromTranscript()" title="Update this person's Obsidian wiki with the loaded transcript">🧠 Update Wiki</button>
       <button id="askSourcesBtn"  class="btn btn-ghost" style="display:none" onclick="askMySourcesToggle()" title="Query your curated NotebookLM notebooks">📔 My Notebooks</button>
       <a id="calibreBtn"     href="#" target="_blank" rel="noopener" class="btn btn-ghost"   style="display:none">📚 In Calibre</a>
       <a id="modalLink"      href="#" target="_blank" rel="noopener" class="btn btn-primary" style="display:none">Open →</a>
@@ -2276,6 +2277,7 @@ async function loadYouTubeTranscript() {
             </div>
             <div class="transcript-body">${escHtml(data.transcript)}</div>`;
           _currentTranscriptText = data.transcript;
+          _refreshWikiBtn();
           btn.textContent = '📄 Transcript ✓';
           return;
         }
@@ -2340,6 +2342,7 @@ async function loadYouTubeTranscript() {
       </div>
       <div class="transcript-body">${escHtml(text)}</div>`;
     _currentTranscriptText = text;
+    _refreshWikiBtn();
     btn.textContent = '📄 Transcript ✓';
 
   } catch(e) {
@@ -4767,6 +4770,11 @@ function openEntry(entry) {
   nbBtn.style.display  = 'none';
   aiBtn.style.display  = 'none';
   obsBtn.style.display = 'none';
+  const wikiBtn = document.getElementById('wikiBtn');
+  wikiBtn.style.display  = 'none';
+  wikiBtn.disabled       = true;
+  wikiBtn.style.opacity  = '';
+  wikiBtn.textContent    = '🧠 Update Wiki';
   ytBtn.disabled = false;
   aiBtn.disabled = false;
   obsBtn.disabled = false;
@@ -4783,6 +4791,7 @@ function openEntry(entry) {
     nbBtn.style.display  = '';   // NotebookLM — video URL is entry.link
     aiBtn.style.display  = '';   // AI Notes
     obsBtn.style.display = '';   // Obsidian
+    wikiBtn.style.display = '';
 
   } else if (entry.platform === 'podcast') {
     if (entry.transcriptUrl) {
@@ -4811,16 +4820,20 @@ function openEntry(entry) {
     nbBtn.style.display  = '';   // NotebookLM — video URL resolved async by findYouTubeForPodcast
     aiBtn.style.display  = '';   // AI Notes
     obsBtn.style.display = '';   // Obsidian
+    wikiBtn.style.display = '';
 
   } else if (entry.platform === 'blog' || entry.platform === 'twitter') {
     // Blog / Substack / X: fetch article text for AI Notes; use URL for NotebookLM
     nbBtn.style.display  = '';   // NotebookLM — copies article URL (web source)
     aiBtn.style.display  = '';   // AI Notes — fetches article text
     obsBtn.style.display = '';   // Obsidian
+    wikiBtn.style.display = '';
   } else if (entry.platform === 'books') {
     // Books: check Calibre library in background
     if (pwConfig.calibreUrl) _checkAndShowCalibreBtn(entry);
   }
+
+  _refreshWikiBtn();
 
   // → Calibre push button for non-book entries (youtube, podcast, blog)
   if (['youtube', 'podcast', 'blog'].includes(entry.platform) && _backendOnline) {
@@ -4907,6 +4920,17 @@ function _syncListenedBtn() {
   btn.textContent       = done ? '✓ Listened' : '✓ Mark as Listened';
   btn.style.color       = done ? 'var(--blog)' : '';
   btn.style.borderColor = done ? 'var(--blog)' : '';
+}
+
+function _refreshWikiBtn() {
+  const btn = document.getElementById('wikiBtn');
+  if (!btn || btn.style.display === 'none') return;
+  const ready       = !!_currentTranscriptText;
+  btn.disabled      = !ready;
+  btn.style.opacity = ready ? '' : '0.45';
+  btn.title = ready
+    ? "Update this person's Obsidian wiki with the loaded transcript"
+    : 'Load a transcript first, then click Update Wiki';
 }
 
 // ── EPISODE HISTORY (IndexedDB) ──
