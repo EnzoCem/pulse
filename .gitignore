@@ -3,3 +3,6 @@
 backend/.DS_Store
 docs/.DS_Store
 docs/superpowers/.DS_Store
+backend/pulse.db
+backend/tests/__pycache__/
+backend/__pycache__/
