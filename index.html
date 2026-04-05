@@ -4040,14 +4040,13 @@ async function _fetchPersonCore(person) {
 
   // Keep books separate — they have old publication dates and would be pushed out
   // by the 20-entry cap if podcast + YouTube fill all slots with newer dates.
-  // CircularBuffer (from Main Rules) auto-evicts oldest when full.
+  // deduplicateEntries returns newest-first; slice keeps the 20 newest.
   const bookEntries  = newEntries.filter(e => e.platform === 'books');
   const otherEntries = newEntries.filter(e => e.platform !== 'books');
-  const otherBuf = new CircularBuffer(20);
-  for (const e of deduplicateEntries(otherEntries)) otherBuf.add(e);
-  const bookBuf = new CircularBuffer(15);
-  for (const e of bookEntries) bookBuf.add(e);
-  person.entries = [...otherBuf.toArray(), ...bookBuf.toArray()];
+  person.entries = [
+    ...deduplicateEntries(otherEntries).slice(0, 20),
+    ...bookEntries.slice(0, 15),
+  ];
   person.lastUpdated = new Date().toISOString();
   person.fetchErrors = failedFeeds;
   person.loading     = false;
