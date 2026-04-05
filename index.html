@@ -749,6 +749,14 @@
   .status-picker-item .dot {
     width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
   }
+  .btn-calibre-push {
+    background: rgba(192,132,252,.15); color: var(--books);
+    border: 1px solid rgba(192,132,252,.3); border-radius: 6px;
+    padding: 5px 12px; font-size: 12px; font-family: 'JetBrains Mono',monospace;
+    cursor: pointer; transition: background .2s;
+  }
+  .btn-calibre-push:hover { background: rgba(192,132,252,.28); }
+  .btn-calibre-push:disabled { opacity: .4; cursor: default; }
   .modal-title {
     font-family: 'Playfair Display', serif;
     font-size: 20px; font-weight: 700; line-height: 1.35;
@@ -1742,6 +1750,7 @@ let entryNotes    = {};   // { entryId: string }   — free-text notes per episo
 let listenedIds   = new Set(); // entry IDs explicitly marked as listened
 let searchQuery   = '';   // current search filter string
 let _currentModalEntry = null;
+let _currentTranscriptText = '';  // transcript/article text for current modal, used by → Calibre push
 let _episodeDB    = null; // IndexedDB handle for full episode history
 let _addType      = 'person'; // 'person' | 'source' — current Add panel mode
 const DEFAULT_PODCAST_PROMPT = `You are an expert research assistant that extracts structured intelligence from podcast and video episodes.
@@ -2188,6 +2197,7 @@ async function loadYouTubeTranscript() {
               — ${data.segments} segments · via backend
             </div>
             <div class="transcript-body">${escHtml(data.transcript)}</div>`;
+          _currentTranscriptText = data.transcript;
           btn.textContent = '📄 Transcript ✓';
           return;
         }
@@ -2251,6 +2261,7 @@ async function loadYouTubeTranscript() {
         — ${segs.length} segments
       </div>
       <div class="transcript-body">${escHtml(text)}</div>`;
+    _currentTranscriptText = text;
     btn.textContent = '📄 Transcript ✓';
 
   } catch(e) {
@@ -4239,6 +4250,35 @@ async function loadPersonStatuses(personId) {
   }
 }
 
+async function pushEntryToCalibr(entryId, personId, title, contentType) {
+  if (!_backendOnline) return;
+  const btn = document.getElementById('calibrePushBtn');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = '→ Pushing…';
+
+  const content = _currentTranscriptText;
+  if (!content) {
+    btn.textContent = '→ Calibre (no content — load transcript first)';
+    btn.disabled = false;
+    return;
+  }
+
+  const result = await _dbClient.pushToCalibr(entryId, personId, title, content, contentType);
+  if (result && result.calibre_id) {
+    const baseUrl = (pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
+    const link = document.createElement('a');
+    link.href = `${baseUrl}/browse/book/${result.calibre_id}`;
+    link.target = '_blank';
+    link.style.cssText = 'color:var(--books);font-size:12px;font-family:\'JetBrains Mono\',monospace';
+    link.textContent = '📚 In Calibre';
+    btn.replaceWith(link);
+  } else {
+    btn.textContent = '→ Calibre (failed)';
+    btn.disabled = false;
+  }
+}
+
 function openEntry(entry) {
   if (typeof entry === 'string') entry = JSON.parse(entry);
   seenIds.add(entry.id);
@@ -4399,6 +4439,9 @@ function openEntry(entry) {
   aiBtn.textContent  = '🤖 AI Notes';
   obsBtn.textContent = '📓 Obsidian';
 
+  // Reset transcript text for this modal session
+  _currentTranscriptText = '';
+
   if (entry.platform === 'youtube') {
     // YouTube: inline transcript via captions API
     ytBtn.style.display = '';
@@ -4442,6 +4485,46 @@ function openEntry(entry) {
   } else if (entry.platform === 'books') {
     // Books: check Calibre library in background
     if (pwConfig.calibreUrl) _checkAndShowCalibreBtn(entry);
+  }
+
+  // → Calibre push button for non-book entries (youtube, podcast, blog)
+  if (['youtube', 'podcast', 'blog'].includes(entry.platform) && _backendOnline) {
+    // Check if already pushed to Calibre; if not, show push button
+    _dbClient.getCalibreLink(entry.id).then(link => {
+      const transcriptArea = document.getElementById('transcriptArea');
+      if (!transcriptArea) return;
+      // Remove any existing push button/link
+      document.getElementById('calibrePushBtn')?.remove();
+      document.querySelector('#transcriptArea + .calibre-link-inline')?.remove();
+
+      if (link && link.calibre_id) {
+        // Already in Calibre — show link
+        const baseUrl = (pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
+        const div = document.createElement('div');
+        div.style.cssText = 'margin-top:8px';
+        const a = document.createElement('a');
+        a.href = `${baseUrl}/browse/book/${link.calibre_id}`;
+        a.target = '_blank';
+        a.style.cssText = 'color:var(--books);font-size:12px;font-family:\'JetBrains Mono\',monospace';
+        a.textContent = '📚 In Calibre';
+        div.appendChild(a);
+        transcriptArea.insertAdjacentElement('afterend', div);
+      } else {
+        // Not yet pushed — show push button
+        const contentType = (entry.platform === 'blog') ? 'article' : 'transcript';
+        const div = document.createElement('div');
+        div.style.cssText = 'margin-top:8px';
+        const btn = document.createElement('button');
+        btn.id = 'calibrePushBtn';
+        btn.className = 'btn-calibre-push';
+        btn.textContent = '→ Calibre';
+        btn.addEventListener('click', () => {
+          pushEntryToCalibr(entry.id, entry.personId, entry.title, contentType);
+        });
+        div.appendChild(btn);
+        transcriptArea.insertAdjacentElement('afterend', div);
+      }
+    });
   }
 
   // My Notebooks — re-check backend freshly each time the modal opens, then show button
