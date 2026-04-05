@@ -5582,6 +5582,12 @@ async function updateWikiFromTranscript() {
   const btn = document.getElementById('wikiBtn');
   if (btn) { btn.disabled = true; btn.textContent = '🧠 Reading wiki…'; }
 
+  if (!await _ensureVaultPermission()) {
+    _showToast('Obsidian vault permission denied — reconnect in ⚙ Settings', 4000);
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+    return;
+  }
+
   try {
     const safeFolder = sanitizeFileName(person.name || entry.personId);
     const [existingIndex, existingLog] = await Promise.all([
