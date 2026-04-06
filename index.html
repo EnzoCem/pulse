@@ -3710,6 +3710,15 @@ function renderAllCards() {
       }).filter(Boolean)
     : persons;
 
+  // Filter grid by person name / description / tags
+  if (personQuery) {
+    visible = visible.filter(p =>
+      p.name.toLowerCase().includes(personQuery) ||
+      (p.desc  || '').toLowerCase().includes(personQuery) ||
+      (p.tags  || []).some(t => t.toLowerCase().includes(personQuery))
+    );
+  }
+
   // Apply search: only show persons with matching entries, filtered to matches only
   let totalMatches = 0;
   if (searchQuery) {
