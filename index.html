@@ -5374,12 +5374,68 @@ function _renderGuestList() {
   }
   listEl.innerHTML = _modalGuests.map((g, i) => {
     const isAI = g.source === 'ai_extracted';
+    const alreadyTracked = persons.some(p => p.name.toLowerCase() === g.name.toLowerCase());
     return `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:3px 8px;font-size:12px;font-family:'JetBrains Mono',monospace">
       ${isAI ? '<span title="Auto-extracted — please verify" style="color:var(--accent);font-size:10px">⚠</span>' : ''}
       <span style="color:var(--text)">${escHtml(g.name)}</span>
+      <button onclick="_trackGuestAsPerson(${i})" title="${alreadyTracked ? 'Already tracking' : 'Track this person'}"
+        style="background:none;border:none;cursor:${alreadyTracked ? 'default' : 'pointer'};color:${alreadyTracked ? 'var(--blog)' : 'var(--muted)'};font-size:11px;padding:0 2px;line-height:1"
+        ${alreadyTracked ? 'disabled' : ''}
+        onmouseover="if(!this.disabled)this.style.color='var(--accent)'" onmouseout="if(!this.disabled)this.style.color='var(--muted)'">➕</button>
       <button onclick="_removeModalGuest(${i})" title="Remove" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:12px;padding:0 2px;line-height:1" onmouseover="this.style.color='var(--youtube)'" onmouseout="this.style.color='var(--muted)'">×</button>
     </span>`;
   }).join('');
+}
+
+function _trackGuestAsPerson(idx) {
+  const guest = _modalGuests[idx];
+  if (!guest) return;
+
+  // Check if already tracked
+  if (persons.some(p => p.name.toLowerCase() === guest.name.toLowerCase())) return;
+
+  // Close the modal so the Add Person panel is visible
+  closeModal();
+
+  // Open the Add Person panel (resets all state)
+  const panel = document.getElementById('addPanel');
+  if (!panel) return;
+  if (!panel.classList.contains('open')) {
+    toggleAddPanel();   // opens panel, resets state, checks all roles, focuses name input
+  } else {
+    // Panel already open — reset it manually the same way toggleAddPanel does on open
+    document.getElementById('suggestArea').innerHTML     = '';
+    document.getElementById('roleResultsArea').innerHTML = '';
+    _suggestions    = [];
+    _formRoles      = new Set(['podcaster','youtuber','blogger','writer']);
+    _roleResults    = {};
+    _roleSelections = {};
+    ['podcaster','youtuber','blogger','writer'].forEach(r => {
+      document.getElementById('role-' + r)?.classList.add('checked');
+    });
+    _formTags = []; renderFormTagChips();
+    const addBtn = document.getElementById('addPersonBtn');
+    if (addBtn) addBtn.textContent = 'Add Person';
+    _foundWiki = null;
+    const avatarPreview = document.getElementById('f-avatar-preview');
+    const avatarPlaceholder = document.getElementById('f-avatar-placeholder');
+    const avatarLabel   = document.getElementById('f-avatar-label');
+    if (avatarPreview)     avatarPreview.style.display = 'none';
+    if (avatarPlaceholder) avatarPlaceholder.style.display = '';
+    if (avatarLabel)       avatarLabel.textContent = 'Avatar URL';
+    setAddType('person');
+  }
+
+  // Pre-fill name
+  const nameInput = document.getElementById('f-name');
+  if (nameInput) {
+    nameInput.value = guest.name;
+    _updateSearchBtn();   // enables Search button now that name is filled
+    nameInput.focus();
+  }
+
+  // Scroll panel into view
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function _removeModalGuest(idx) {
