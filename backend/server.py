@@ -613,6 +613,40 @@ def calibre_get_text(calibre_id):
         _shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Calibre — Content Server proxy (avoids browser CORS restriction)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/api/calibre/proxy', methods=['GET'])
+def calibre_proxy():
+    """
+    Proxy a Calibre Content Server HTTP request to avoid browser CORS restrictions.
+    Required query params: calibre_url, path
+    Optional header: X-Calibre-Auth (Basic auth value, forwarded as Authorization)
+    All other query params are forwarded to Calibre unchanged.
+    """
+    calibre_url = request.args.get('calibre_url', '').rstrip('/')
+    path        = request.args.get('path', '')
+    if not calibre_url or not path:
+        return jsonify({'error': 'calibre_url and path are required'}), 400
+
+    forward_params = {k: v for k, v in request.args.items()
+                      if k not in ('calibre_url', 'path')}
+    headers = {}
+    auth = request.headers.get('X-Calibre-Auth')
+    if auth:
+        headers['Authorization'] = auth
+
+    try:
+        resp = _requests.get(f'{calibre_url}{path}', params=forward_params,
+                             headers=headers, timeout=10)
+        return jsonify(resp.json()), resp.status_code
+    except _requests.exceptions.ConnectionError:
+        return jsonify({'error': 'Cannot connect to Calibre Content Server'}), 502
+    except Exception as e:
+        return jsonify({'error': str(e)}), 502
+
+
 # ── Startup ────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     skill_ok = os.path.isfile(os.path.join(SKILL_PATH, 'scripts', 'run.py'))

@@ -6577,25 +6577,42 @@ function _saveAskSourcesAsNote() {
 
 // ── CALIBRE INTEGRATION ──
 
-async function _searchCalibreInner(title, author) {
-  const baseUrl = (pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
-  const headers = {};
-  if (pwConfig.calibreUser) {
-    headers['Authorization'] = 'Basic ' + btoa(`${pwConfig.calibreUser}:${pwConfig.calibrePass}`);
-  }
+/**
+ * Fetch a Calibre Content Server endpoint, routing through the Pulse backend
+ * proxy when available to avoid browser CORS restrictions.
+ * calibreUrl: base URL (e.g. 'http://localhost:8080') — defaults to pwConfig
+ */
+async function _calibreFetch(path, queryParams, calibreUrl) {
+  const base    = (calibreUrl || pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
+  const authVal = pwConfig.calibreUser
+    ? 'Basic ' + btoa(`${pwConfig.calibreUser}:${pwConfig.calibrePass}`)
+    : null;
 
+  if (_backendOnline) {
+    // Server-to-server: no CORS restriction
+    const params = new URLSearchParams({ calibre_url: base, path, ...queryParams });
+    const hdrs   = authVal ? { 'X-Calibre-Auth': authVal } : {};
+    return fetch(`http://localhost:5001/api/calibre/proxy?${params}`, { headers: hdrs });
+  } else {
+    // Direct call — requires Access-Control-Allow-Origin header on Calibre
+    const params = new URLSearchParams(queryParams);
+    const hdrs   = authVal ? { 'Authorization': authVal } : {};
+    return fetch(`${base}${path}?${params}`, { headers: hdrs });
+  }
+}
+
+async function _searchCalibreInner(title, author) {
   try {
     // Search by title
-    const query  = encodeURIComponent(`title:"${title}"`);
-    const res    = await fetch(`${baseUrl}/ajax/search?query=${query}&num=10`, { headers });
+    const res  = await _calibreFetch('/ajax/search', { query: `title:"${title}"`, num: 10 });
     if (!res.ok) return null;
-    const data   = await res.json();
+    const data = await res.json();
 
     if (!data.book_ids || data.book_ids.length === 0) return { found: false };
 
     // Fetch metadata to verify author match
     const ids     = data.book_ids.slice(0, 10).join(',');
-    const metaRes = await fetch(`${baseUrl}/ajax/books?ids=${ids}&fields=title,authors,formats`, { headers });
+    const metaRes = await _calibreFetch('/ajax/books', { ids, fields: 'title,authors,formats' });
     if (!metaRes.ok) return null;
     const meta    = await metaRes.json();
 
@@ -6633,20 +6650,14 @@ const searchCalibre = memoizeWithTTLAsync(_searchCalibreInner, 5 * 60 * 1000);
  */
 async function searchCalibreMulti(query) {
   if (!query.trim()) return [];
-  const baseUrl = (pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
-  const headers = {};
-  if (pwConfig.calibreUser) {
-    headers['Authorization'] = 'Basic ' + btoa(`${pwConfig.calibreUser}:${pwConfig.calibrePass}`);
-  }
   try {
-    const q   = encodeURIComponent(query.trim());
-    const res = await fetch(`${baseUrl}/ajax/search?query=${q}&num=10`, { headers });
+    const res = await _calibreFetch('/ajax/search', { query: query.trim(), num: 10 });
     if (!res.ok) return [];
     const data = await res.json();
     if (!data.book_ids || !data.book_ids.length) return [];
 
     const ids     = data.book_ids.slice(0, 10).join(',');
-    const metaRes = await fetch(`${baseUrl}/ajax/books?ids=${ids}&fields=title,authors,formats`, { headers });
+    const metaRes = await _calibreFetch('/ajax/books', { ids, fields: 'title,authors,formats' });
     if (!metaRes.ok) return [];
     const meta    = await metaRes.json();
 
@@ -6725,11 +6736,10 @@ async function testCalibreConnection() {
   btn.textContent = '⏳ Testing…';
   btn.disabled = true;
   try {
-    const baseUrl = (pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
-    const headers = {};
-    if (pwConfig.calibreUser)
-      headers['Authorization'] = 'Basic ' + btoa(`${pwConfig.calibreUser}:${pwConfig.calibrePass}`);
-    const res = await fetch(`${baseUrl}/ajax/search?query=*&num=1`, { headers });
+    // Read from form fields directly so unsaved changes are tested too
+    const calibreUrl = (document.getElementById('cfg-calibre-url')?.value.trim()
+      || pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
+    const res = await _calibreFetch('/ajax/search', { query: '*', num: 1 }, calibreUrl);
     if (res.ok) {
       btn.textContent = '✓ Connected';
       btn.style.color = 'var(--blog)';
