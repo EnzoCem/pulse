@@ -376,6 +376,24 @@ def db_get_episodes(person_id):
                                     db_path=_db.DB_PATH))
 
 
+@app.route('/api/db/episodes/upsert', methods=['POST'])
+def db_upsert_episodes():
+    """
+    Directly upsert one or more episode records (e.g. book entries from localStorage).
+    Body: {episodes: [{id, person_id, person_name, platform, title, link,
+                       description, date, duration_sec, episode_number}]}
+    """
+    data = request.json or {}
+    episodes = data.get('episodes', [])
+    if not episodes:
+        return jsonify({'error': 'episodes list is required'}), 400
+    try:
+        _db.upsert_episodes(episodes, path=_db.DB_PATH)
+        return jsonify({'upserted': len(episodes)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/db/episodes/sync/<person_id>', methods=['POST'])
 def db_sync_episodes(person_id):
     """

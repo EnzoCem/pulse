@@ -1880,6 +1880,8 @@ const _dbClient = {
   syncEpisodes:     (personId, personName, rssUrl, itunesId) =>
     _dbClient._call('POST', `/api/db/episodes/sync/${encodeURIComponent(personId)}`,
                     { person_name: personName, rss_url: rssUrl, itunes_id: itunesId }),
+  upsertEpisodes:   (episodes) =>
+    _dbClient._call('POST', '/api/db/episodes/upsert', { episodes }),
 
   // Guests
   searchGuests:     (q)                         => _dbClient._call('GET',  `/api/db/guests?q=${encodeURIComponent(q)}`),
@@ -6833,12 +6835,25 @@ function _openBookCalibreLinker(entry, triggerBtn) {
 
   const initialQuery = [entry.title, entry.author].filter(Boolean).join(' ');
   openCalibrePicker(pickerContainer, async (book) => {
-    // User selected a book — save the link
+    // User selected a book — save the link and upsert entry into SQLite so it appears in Library
     if (_backendOnline) {
-      await _dbClient.setCalibreLink(
-        entry.id, entry.personId, book.bookId,
-        book.title, book.formats, 'book'
-      ).catch(() => {});
+      const person = persons.find(p => p.id === entry.personId);
+      await Promise.all([
+        _dbClient.setCalibreLink(
+          entry.id, entry.personId, book.bookId,
+          book.title, book.formats, 'book'
+        ).catch(() => {}),
+        _dbClient.upsertEpisodes([{
+          id:          entry.id,
+          person_id:   entry.personId,
+          person_name: person?.name || '',
+          platform:    'books',
+          title:       entry.title,
+          link:        entry.link,
+          description: entry.desc || '',
+          date:        entry.date || null,
+        }]).catch(() => {}),
+      ]);
     }
     // Update the button to show the link
     const baseUrl    = (pwConfig.calibreUrl || 'http://localhost:8080').replace(/\/$/, '');
