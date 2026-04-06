@@ -6680,15 +6680,16 @@ async function searchCalibreMulti(query) {
  * onSelect({bookId, title, authors, formats}) is called when user picks a result.
  * onCancel (optional) is called when user clicks Cancel.
  */
-function openCalibrePicker(containerEl, onSelect, onCancel) {
+function openCalibrePicker(containerEl, onSelect, onCancel, initialQuery) {
   containerEl.innerHTML = `
     <div class="calibre-picker">
       <div class="calibre-picker-search">
-        <input id="cpSearchInput" type="text" placeholder="Search Calibre…" autocomplete="off">
+        <input id="cpSearchInput" type="text" placeholder="Search Calibre…" autocomplete="off"
+          value="${escHtml(initialQuery || '')}">
         ${onCancel ? `<button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" id="cpCancelBtn">Cancel</button>` : ''}
       </div>
       <div class="calibre-picker-results" id="cpResults">
-        <div class="calibre-picker-empty">Type to search your Calibre library</div>
+        <div class="calibre-picker-empty">${initialQuery ? 'Searching…' : 'Type to search your Calibre library'}</div>
       </div>
     </div>`;
 
@@ -6728,6 +6729,9 @@ function openCalibrePicker(containerEl, onSelect, onCancel) {
       });
     }, 300);
   });
+
+  // If an initial query was provided, trigger the search immediately
+  if (initialQuery) input.dispatchEvent(new Event('input'));
 }
 
 async function testCalibreConnection() {
@@ -6827,6 +6831,7 @@ function _openBookCalibreLinker(entry, triggerBtn) {
     else document.getElementById('modalContent').appendChild(pickerContainer);
   }
 
+  const initialQuery = [entry.title, entry.author].filter(Boolean).join(' ');
   openCalibrePicker(pickerContainer, async (book) => {
     // User selected a book — save the link
     if (_backendOnline) {
@@ -6847,7 +6852,7 @@ function _openBookCalibreLinker(entry, triggerBtn) {
   }, () => {
     // User cancelled
     pickerContainer.remove();
-  });
+  }, initialQuery);
 }
 
 // ── Add Article modal ─────────────────────────────────────────────────────────
