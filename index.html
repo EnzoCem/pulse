@@ -1693,6 +1693,7 @@
       <button id="wikiBtn"        class="btn btn-ghost" style="display:none" onclick="updateWikiFromTranscript()" title="Update this person's Obsidian wiki with the loaded transcript">🧠 Update Wiki</button>
       <button id="askSourcesBtn"  class="btn btn-ghost" style="display:none" onclick="askMySourcesToggle()" title="Query your curated NotebookLM notebooks">📔 My Notebooks</button>
       <a id="calibreBtn"     href="#" target="_blank" rel="noopener" class="btn btn-ghost"   style="display:none">📚 In Calibre</a>
+      <button id="calibreUnlinkBtn" class="btn btn-ghost" style="display:none;font-size:10px;padding:3px 7px;color:var(--muted)" onclick="unlinkCalibre()">✕ Unlink</button>
       <a id="modalLink"      href="#" target="_blank" rel="noopener" class="btn btn-primary" style="display:none">Open →</a>
       <a id="modalSoundLink" href="#" target="_blank" rel="noopener" class="btn btn-ghost"   style="display:none">🔊 Open Sound</a>
       <a id="modalVideoLink" href="#" target="_blank" rel="noopener" class="btn btn-primary" style="display:none">▶ Open Video</a>
@@ -1892,6 +1893,8 @@ const _dbClient = {
     _dbClient._call('PUT', `/api/db/calibre/${encodeURIComponent(entryId)}`,
       { person_id: personId, calibre_id: calibreId, calibre_title: calibreTitle,
         formats: JSON.stringify(formats), content_type: contentType }),
+  removeCalibreLink: (entryId) =>
+    _dbClient._call('DELETE', `/api/db/calibre/${encodeURIComponent(entryId)}`),
 
   // Library
   library:          (params={})                 => {
@@ -6765,6 +6768,8 @@ async function _checkAndShowCalibreBtn(entry) {
   if (!btn) return;
   if (entry.platform !== 'books') { btn.style.display = 'none'; return; }
 
+  const unlinkBtn = document.getElementById('calibreUnlinkBtn');
+
   // Check our DB first — user may have previously linked this book manually
   if (_backendOnline) {
     const dbLink = await _dbClient.getCalibreLink(entry.id).catch(() => null);
@@ -6777,6 +6782,19 @@ async function _checkAndShowCalibreBtn(entry) {
       btn.style.pointerEvents = '';
       btn.style.color = 'var(--books)';
       btn.onclick = null;
+      if (unlinkBtn) unlinkBtn.style.display = '';
+      // Ensure this book entry exists in SQLite so it appears in the Library tab
+      const person = persons.find(p => p.id === entry.personId);
+      _dbClient.upsertEpisodes([{
+        id:          entry.id,
+        person_id:   entry.personId,
+        person_name: person?.name || '',
+        platform:    'books',
+        title:       entry.title,
+        link:        entry.link,
+        description: entry.desc || '',
+        date:        entry.date || null,
+      }]).catch(() => {});
       return;
     }
   }
@@ -6808,6 +6826,7 @@ async function _checkAndShowCalibreBtn(entry) {
       e.preventDefault();
       _openBookCalibreLinker(entry, btn);
     };
+    if (unlinkBtn) unlinkBtn.style.display = 'none';
   } else {
     // null = Calibre offline
     btn.removeAttribute('href');
@@ -6817,7 +6836,30 @@ async function _checkAndShowCalibreBtn(entry) {
     btn.style.color = '';
     btn.onclick = null;
     btn.title = 'Start Calibre Content Server (Preferences → Sharing → Content Server) and add CORS header: Access-Control-Allow-Origin: *';
+    if (unlinkBtn) unlinkBtn.style.display = 'none';
   }
+}
+
+async function unlinkCalibre() {
+  const entry     = _currentModalEntry;
+  const btn       = document.getElementById('calibreBtn');
+  const unlinkBtn = document.getElementById('calibreUnlinkBtn');
+  if (!entry || !btn) return;
+
+  if (!confirm(`Remove the Calibre link for "${entry.title}"?`)) return;
+
+  if (_backendOnline) {
+    await _dbClient.removeCalibreLink(entry.id).catch(() => {});
+  }
+
+  // Reset button to "🔗 Link Calibre" state
+  btn.removeAttribute('href');
+  btn.textContent      = '🔗 Link Calibre';
+  btn.style.opacity    = '';
+  btn.style.pointerEvents = '';
+  btn.style.color      = 'var(--article)';
+  btn.onclick = (e) => { e.preventDefault(); _openBookCalibreLinker(entry, btn); };
+  if (unlinkBtn) unlinkBtn.style.display = 'none';
 }
 
 function _openBookCalibreLinker(entry, triggerBtn) {

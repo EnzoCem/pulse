@@ -295,6 +295,14 @@ def db_set_calibre_link_direct(entry_id):
     return jsonify({'ok': True})
 
 
+@app.route('/api/db/calibre/<entry_id>', methods=['DELETE'])
+def db_remove_calibre_link(entry_id):
+    """Remove a Calibre link for an entry."""
+    with _db.get_db(_db.DB_PATH) as conn:
+        conn.execute('DELETE FROM calibre_links WHERE entry_id = ?', (entry_id,))
+    return jsonify({'ok': True})
+
+
 @app.route('/api/db/calibre/push', methods=['POST'])
 def db_push_to_calibre():
     """
