@@ -2530,7 +2530,7 @@ async function loadTranscriptFromPage() {
 
   const btn  = document.getElementById('ytTranscriptBtn');
   const area = document.getElementById('transcriptArea');
-  if (!area) return;
+  if (!btn || !area) return;
 
   btn.disabled    = true;
   btn.textContent = '📋 Finding transcript…';
