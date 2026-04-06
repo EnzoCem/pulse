@@ -3081,18 +3081,38 @@ async function testFeedUrl(feedKey) {
     } catch { return null; }
   };
 
-  let xml = await tryFetch(url);
-  if (!isXml(xml)) xml = await tryFetch(CORS_PRIMARY  + encodeURIComponent(url));
-  if (!isXml(xml)) xml = await tryFetch(CORS_FALLBACK  + encodeURIComponent(url));
-  if (!isXml(xml)) xml = await tryFetch(CORS_FALLBACK2 + encodeURIComponent(url));
+  // Try the URL as-is first (direct + proxy chain)
+  const tryUrl = async (u) => {
+    let t = await tryFetch(u);
+    if (isXml(t)) return t;
+    t = await tryFetch(CORS_PRIMARY   + encodeURIComponent(u));
+    if (isXml(t)) return t;
+    t = await tryFetch(CORS_FALLBACK  + encodeURIComponent(u));
+    if (isXml(t)) return t;
+    t = await tryFetch(CORS_FALLBACK2 + encodeURIComponent(u));
+    return isXml(t) ? t : null;
+  };
+
+  let xml        = await tryUrl(url);
+  let resolvedUrl = url;
+
+  // If not a valid feed, try common RSS path suffixes on the base URL
+  if (!isRss(xml)) {
+    const base     = url.replace(/\/(feed|rss|atom)(\.xml)?\/?\s*$/i, '').replace(/\/$/, '');
+    const suffixes = ['/feed', '/rss', '/feed.xml', '/atom.xml', '/rss.xml', '/blog/feed', '/blog/rss'];
+    for (const suffix of suffixes) {
+      const candidate = base + suffix;
+      if (candidate === url) continue;
+      btn.textContent = `⏳ trying ${suffix}`;
+      const t = await tryUrl(candidate);
+      if (isRss(t)) { xml = t; resolvedUrl = candidate; break; }
+    }
+  }
 
   btn.disabled = false;
 
   if (!xml) {
     btn.textContent = '✗ Unreachable';
-    btn.style.color = '#e84a4a';
-  } else if (!isXml(xml)) {
-    btn.textContent = '✗ Not a feed';
     btn.style.color = '#e84a4a';
   } else if (!isRss(xml)) {
     btn.textContent = '✗ Not RSS/Atom';
@@ -3100,12 +3120,15 @@ async function testFeedUrl(feedKey) {
   } else if (!hasItems(xml)) {
     btn.textContent = '⚠ Feed empty';
     btn.style.color = 'var(--accent)';
+    if (resolvedUrl !== url) input.value = resolvedUrl;
   } else {
-    btn.textContent = '✓ Valid feed';
+    const corrected = resolvedUrl !== url;
+    btn.textContent = corrected ? `✓ Fixed → ${resolvedUrl.replace(/.*?\/\/[^/]+/, '')}` : '✓ Valid feed';
     btn.style.color = '#4ae880';
+    if (corrected) input.value = resolvedUrl;
   }
 
-  setTimeout(() => { btn.textContent = 'Test'; btn.style.color = ''; }, 5000);
+  setTimeout(() => { btn.textContent = 'Test'; btn.style.color = ''; }, 6000);
 }
 
 async function savePersonDetail() {
