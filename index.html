@@ -5039,13 +5039,15 @@ function openEntry(entry) {
     <div id="guestSection" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
       <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Guests</div>
       <div id="guestList" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
-      <div style="display:flex;gap:6px;align-items:center;position:relative">
-        <input id="guestInput" type="text" placeholder="Add guest name…"
-          style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 8px"
-          oninput="_guestInputChanged(this.value)"
-          onkeydown="_guestInputKeydown(event)" />
+      <div style="display:flex;gap:6px;align-items:center">
+        <div style="flex:1;position:relative">
+          <input id="guestInput" type="text" placeholder="Add guest name…"
+            style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 8px"
+            oninput="_guestInputChanged(this.value)"
+            onkeydown="_guestInputKeydown(event)" />
+          <div id="guestSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;z-index:200;max-height:140px;overflow-y:auto"></div>
+        </div>
         <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="_addGuestFromInput()">+ Add</button>
-        <div id="guestSuggestions" style="display:none;position:absolute;top:100%;left:0;right:40px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;z-index:200;max-height:140px;overflow-y:auto"></div>
       </div>
     </div>
     <div id="transcriptArea"></div>
@@ -5339,10 +5341,13 @@ async function _loadModalGuests(episodeId) {
   const listEl = document.getElementById('guestList');
   if (!listEl) return;
   _modalGuests = [];
+  _renderGuestList();
   try {
     const result = await _dbClient.getEpisodeGuests(episodeId);
+    if (_currentModalEntry?.id !== episodeId) return;   // stale check
     _modalGuests = result.guests || [];
   } catch (e) {
+    if (_currentModalEntry?.id !== episodeId) return;   // stale check
     // Backend offline or episode not in DB yet — start with empty list
     _modalGuests = [];
   }
@@ -5704,6 +5709,8 @@ function _searchCountBar(count) {
 
 function closeModal(e) {
   if (!e || e.target === document.getElementById('modalOverlay') || !e.target) {
+    clearTimeout(_guestSuggestTimeout);
+    _guestSuggestions = [];
     const sugEl = document.getElementById('guestSuggestions');
     if (sugEl) sugEl.style.display = 'none';
     _modalGuests = [];
@@ -7317,7 +7324,8 @@ function saveArticle() {
 // ── GUEST SUGGESTION CLICK-OUTSIDE ──
 document.addEventListener('click', e => {
   const sugEl = document.getElementById('guestSuggestions');
-  if (sugEl && !sugEl.contains(e.target) && e.target.id !== 'guestInput') {
+  if (!sugEl || sugEl.style.display === 'none') return;
+  if (!sugEl.contains(e.target) && e.target.id !== 'guestInput') {
     sugEl.style.display = 'none';
   }
 });
