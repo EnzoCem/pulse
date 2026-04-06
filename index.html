@@ -1565,6 +1565,26 @@
   <!-- Tag filter row — rendered dynamically when tags exist -->
   <div class="tag-filter-row" id="tagFilterRow"></div>
 
+  <!-- Person search row — filters the people grid; hidden in non-people views -->
+  <div id="personSearchRow" style="display:flex;align-items:center;justify-content:flex-end;padding:0 16px 8px;gap:8px">
+    <div style="position:relative">
+      <input id="personSearchInput" type="text"
+        style="background:var(--surface);border:1px solid var(--border);border-radius:20px;
+               color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;
+               padding:6px 28px 6px 12px;width:180px;outline:none;
+               transition:border-color 0.15s,width 0.2s"
+        placeholder="Search people…"
+        oninput="setPersonSearch(this.value)"
+        onkeydown="if(event.key==='Escape'){setPersonSearch('');this.value=''}"
+        onfocus="this.style.borderColor='var(--accent)';this.style.width='240px'"
+        onblur="this.style.borderColor='var(--border)';if(!personQuery)this.style.width='180px'">
+      <button id="personSearchClearBtn"
+        style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);
+               background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0;line-height:1"
+        onclick="setPersonSearch('');document.getElementById('personSearchInput').value=''">×</button>
+    </div>
+  </div>
+
   <!-- PEOPLE VIEW -->
   <div class="view active" id="view-people">
     <div class="persons-grid" id="personsGrid"></div>
@@ -1891,6 +1911,7 @@ let entryTags     = {};   // { entryId: string[] } — persisted separately so t
 let entryNotes    = {};   // { entryId: string }   — free-text notes per episode
 let listenedIds   = new Set(); // entry IDs explicitly marked as listened
 let searchQuery   = '';   // current search filter string
+let personQuery   = '';   // current person-grid filter string
 let _currentModalEntry = null;
 let _currentTranscriptText = '';  // transcript/article text for current modal, used by → Calibre push
 let _libraryItems   = [];
@@ -2585,6 +2606,7 @@ function switchView(v) {
   if (['people', 'timeline', 'library'].includes(v)) document.getElementById('tab-' + v)?.classList.add('active');
   // Body class drives CSS visibility of back btn, toolbar, tag row, tabs
   document.body.classList.toggle('view-person', v === 'person');
+  document.getElementById('personSearchRow').style.display = v === 'people' ? '' : 'none';
   if (v === 'timeline') renderTimeline();
   if (v === 'people')   { renderAllCards(); renderHistoryResults(); }
   if (v === 'library') { _libraryItems = []; _libraryOffset = 0; renderLibraryFilterBar(); loadLibrary(); }
@@ -3709,13 +3731,24 @@ function renderAllCards() {
       }).filter(Boolean)
     : persons;
 
+  // Filter grid by person name / description / tags
+  if (personQuery) {
+    visible = visible.filter(p =>
+      p.name.toLowerCase().includes(personQuery) ||
+      (p.desc  || '').toLowerCase().includes(personQuery) ||
+      (p.tags  || []).some(t => t.toLowerCase().includes(personQuery))
+    );
+  }
+
   // Apply search: only show persons with matching entries, filtered to matches only
   let totalMatches = 0;
   if (searchQuery) {
     const q = searchQuery;
     visible = visible.map(p => {
       const matched = (p.entries||[]).filter(e =>
-        e.title.toLowerCase().includes(q) || (e.desc||'').toLowerCase().includes(q));
+        e.title.toLowerCase().includes(q) ||
+        (e.desc||'').toLowerCase().includes(q) ||
+        (entryTags[e.id]||[]).some(t => t.toLowerCase().includes(q)));
       totalMatches += matched.length;
       return matched.length ? { ...p, _searchEntries: matched } : null;
     }).filter(Boolean);
@@ -3863,7 +3896,9 @@ function renderTimeline() {
   if (searchQuery) {
     const q = searchQuery;
     entries = entries.filter(e =>
-      e.title.toLowerCase().includes(q) || (e.desc||'').toLowerCase().includes(q));
+      e.title.toLowerCase().includes(q) ||
+      (e.desc||'').toLowerCase().includes(q) ||
+      (entryTags[e.id]||[]).some(t => t.toLowerCase().includes(q)));
   }
   _searchCountBar(entries.length);
   entries.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -5168,6 +5203,13 @@ function setSearch(q) {
   if (currentView === 'people')   renderAllCards();
   if (currentView === 'timeline') renderTimeline();
   renderHistoryResults();
+}
+
+function setPersonSearch(q) {
+  personQuery = q.trim().toLowerCase();
+  const clearBtn = document.getElementById('personSearchClearBtn');
+  if (clearBtn) clearBtn.style.display = personQuery ? '' : 'none';
+  renderAllCards();
 }
 
 async function renderHistoryResults() {
