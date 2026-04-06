@@ -5416,6 +5416,13 @@ function _trackGuestAsPerson(idx) {
     _formTags = []; renderFormTagChips();
     const addBtn = document.getElementById('addPersonBtn');
     if (addBtn) addBtn.textContent = 'Add Person';
+    _foundWiki = null;
+    const avatarPreview = document.getElementById('f-avatar-preview');
+    const avatarPlaceholder = document.getElementById('f-avatar-placeholder');
+    const avatarLabel   = document.getElementById('f-avatar-label');
+    if (avatarPreview)     avatarPreview.style.display = 'none';
+    if (avatarPlaceholder) avatarPlaceholder.style.display = '';
+    if (avatarLabel)       avatarLabel.textContent = 'Avatar URL';
     setAddType('person');
   }
 
@@ -5424,6 +5431,7 @@ function _trackGuestAsPerson(idx) {
   if (nameInput) {
     nameInput.value = guest.name;
     _updateSearchBtn();   // enables Search button now that name is filled
+    nameInput.focus();
   }
 
   // Scroll panel into view
