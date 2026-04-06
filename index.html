@@ -4897,6 +4897,11 @@ function renderLibraryList() {
       <span class="lib-platform-badge" style="background:${color}20;color:${color}">${item.platform}</span>
       ${item.calibre_id ? `<span style="color:var(--books);font-size:11px">📚</span>` : ''}`;
 
+    if (item.link) {
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', () => window.open(item.link, '_blank', 'noopener'));
+    }
+
     row.appendChild(dot);
     row.appendChild(body);
     row.appendChild(badges);
