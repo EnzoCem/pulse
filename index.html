@@ -1891,6 +1891,7 @@ let entryTags     = {};   // { entryId: string[] } — persisted separately so t
 let entryNotes    = {};   // { entryId: string }   — free-text notes per episode
 let listenedIds   = new Set(); // entry IDs explicitly marked as listened
 let searchQuery   = '';   // current search filter string
+let personQuery   = '';   // current person-grid filter string
 let _currentModalEntry = null;
 let _currentTranscriptText = '';  // transcript/article text for current modal, used by → Calibre push
 let _libraryItems   = [];
