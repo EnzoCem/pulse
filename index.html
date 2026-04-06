@@ -2332,6 +2332,14 @@ async function findYouTubeForPodcast(person, entry) {
   return null;
 }
 
+// ── TRANSCRIPT PAGE HELPERS ──
+function _extractEpisodeNumber(title) {
+  // Matches: #857, Ep. 42, Episode 3, Joe Rogan Experience #1234
+  // Word boundary check: avoids matching years like 2024 when embedded in longer numbers
+  const m = title.match(/(?:^|\s)#?(\d{1,4})(?:\s|:|$)/);
+  return m ? m[1] : null;
+}
+
 // ── YOUTUBE TRANSCRIPT ──
 function extractYouTubeId(url) {
   const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
