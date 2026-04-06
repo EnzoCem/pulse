@@ -5068,7 +5068,7 @@ function openEntry(entry) {
       tBtn.textContent = '🔍 Find Transcript';
       tBtn.title       = `Search: ${query}`;
     }
-    tBtn.style.display = '';
+    if (!person.transcriptsUrl) tBtn.style.display = '';
     nbBtn.style.display  = '';   // NotebookLM — video URL resolved async by findYouTubeForPodcast
     aiBtn.style.display  = '';   // AI Notes
     obsBtn.style.display = '';   // Obsidian
