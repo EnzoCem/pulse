@@ -5028,6 +5028,7 @@ function openEntry(entry) {
   aiBtn.disabled = false;
   obsBtn.disabled = false;
   ytBtn.textContent  = '📄 Load Transcript';
+  ytBtn.onclick      = loadYouTubeTranscript;
   aiBtn.textContent  = '🤖 AI Notes';
   obsBtn.textContent = '📓 Obsidian';
   delete aiBtn.dataset.calibreId;
@@ -5050,10 +5051,11 @@ function openEntry(entry) {
       tBtn.textContent = '📄 Transcript';
       tBtn.title       = 'Open episode transcript (provided by the podcast RSS feed)';
     } else if (person.transcriptsUrl) {
-      // Person-level transcripts page (set in Edit profile)
-      tBtn.href        = person.transcriptsUrl;
-      tBtn.textContent = '📋 Transcripts';
-      tBtn.title       = `Open ${escHtml(person.name)}'s transcripts page`;
+      // Person-level transcripts page: load automatically instead of linking
+      ytBtn.textContent   = '📋 Load Transcript';
+      ytBtn.onclick       = loadTranscriptFromPage;
+      ytBtn.style.display = '';
+      tBtn.style.display  = 'none';   // suppress the link — ytBtn takes its role
     } else {
       // Fallback: targeted Google search — "<Show>" "<Episode>" "<Month Year>" transcript
       const showName = person.name ? `"${person.name}"` : '';
