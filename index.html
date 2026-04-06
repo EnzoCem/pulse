@@ -2522,6 +2522,67 @@ async function loadYouTubeTranscript() {
   }
 }
 
+async function loadTranscriptFromPage() {
+  if (!_currentModalEntry) return;
+  const entry  = _currentModalEntry;
+  const person = persons.find(p => p.id === entry.personId);
+  if (!person?.transcriptsUrl) return;
+
+  const btn  = document.getElementById('ytTranscriptBtn');
+  const area = document.getElementById('transcriptArea');
+  if (!area) return;
+
+  btn.disabled    = true;
+  btn.textContent = '📋 Finding transcript…';
+  area.innerHTML  = '<div class="transcript-loading">Searching transcripts page…</div>';
+
+  // Step 1: fetch the transcripts index page
+  let pageHtml = null;
+  for (const proxy of ['', CORS_PRIMARY, CORS_FALLBACK, CORS_FALLBACK2]) {
+    try {
+      const url  = proxy ? proxy + encodeURIComponent(person.transcriptsUrl) : person.transcriptsUrl;
+      const resp = await fetch(url, { signal: AbortSignal.timeout(12000) });
+      if (resp.ok) { pageHtml = await resp.text(); break; }
+    } catch(_) {}
+  }
+
+  if (!pageHtml) {
+    area.innerHTML = `<div class="transcript-loading">⚠ Could not reach ${escHtml(person.name)}'s transcripts page — falling back to YouTube.</div>`;
+    await loadYouTubeTranscript();
+    return;
+  }
+
+  // Step 2–4: find the transcript URL using heuristics + Claude
+  area.innerHTML = '<div class="transcript-loading">Matching episode…</div>';
+  const transcriptUrl = await _findTranscriptUrl(pageHtml, entry.title);
+
+  if (!transcriptUrl) {
+    area.innerHTML = `<div class="transcript-loading">⚠ Couldn't match episode to a transcript on ${escHtml(person.name)}'s page — falling back to YouTube.</div>`;
+    await loadYouTubeTranscript();
+    return;
+  }
+
+  // Step 3: fetch the individual transcript page and extract text
+  area.innerHTML = '<div class="transcript-loading">Loading transcript…</div>';
+  const text = await fetchArticleText(transcriptUrl);
+
+  if (!text) {
+    area.innerHTML = `<div class="transcript-loading">⚠ Found transcript link but could not load it — falling back to YouTube.</div>`;
+    await loadYouTubeTranscript();
+    return;
+  }
+
+  // Success: display transcript with source attribution
+  const sourceNote = `📋 Source: ${transcriptUrl}`;
+  _currentTranscriptText = sourceNote + '\n\n' + text;
+  area.innerHTML = `
+    <div class="transcript-label">${escHtml(sourceNote)}</div>
+    <div class="transcript-body">${escHtml(text)}</div>`;
+  _refreshWikiBtn();
+  btn.disabled    = false;
+  btn.textContent = '📋 Transcript ✓';
+}
+
 function removeEntryTag(entryId, tag) {
   entryTags[entryId] = (entryTags[entryId] || []).filter(t => t !== tag);
   if (!entryTags[entryId].length) delete entryTags[entryId];
