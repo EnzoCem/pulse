@@ -2818,8 +2818,19 @@ function renderPersonDetail() {
       ? `<span class="detail-feed-warn" title="This looks like a profile URL, not an RSS feed. Use rss.app to get an RSS URL for X/Twitter.">⚠ not RSS</span>`
       : '';
 
+    const testable = ['podcast', 'blog', 'twitter'].includes(f.key);
+    const testBtn  = testable
+      ? `<button id="df-test-${f.key}" onclick="testFeedUrl('${f.key}')"
+           title="Check if this URL is a valid RSS/Atom feed"
+           style="font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 8px;
+                  background:none;border:1px solid var(--border);border-radius:4px;
+                  color:var(--muted);cursor:pointer;white-space:nowrap;transition:color .2s">
+           Test
+         </button>`
+      : '';
     return `
-      <div class="detail-feed-row${!enabled ? ' feed-disabled' : ''}" id="feed-row-${f.key}">
+      <div class="detail-feed-row${!enabled ? ' feed-disabled' : ''}" id="feed-row-${f.key}"
+           ${testable ? 'style="grid-template-columns:10px 18px 100px 1fr auto"' : ''}>
         <span class="feed-dot ${dotClass}" title="${dotTitle}"></span>
         <input type="checkbox" class="feed-toggle" id="df-toggle-${f.key}"
                ${enabled ? 'checked' : ''}
@@ -2828,6 +2839,7 @@ function renderPersonDetail() {
         <label class="detail-feed-lbl" for="df-${f.key}">${f.label}${warnHtml}</label>
         <input class="detail-input" id="df-${f.key}" type="text"
                value="${escHtml(val)}" placeholder="${f.ph}">
+        ${testBtn}
       </div>`;
   }).join('');
 
@@ -3040,6 +3052,60 @@ function toggleFeedEnabled(personId, feedKey, enabled) {
   // Update row appearance immediately
   const row = document.getElementById(`feed-row-${feedKey}`);
   if (row) row.classList.toggle('feed-disabled', !enabled);
+}
+
+async function testFeedUrl(feedKey) {
+  const input = document.getElementById(`df-${feedKey}`);
+  const btn   = document.getElementById(`df-test-${feedKey}`);
+  if (!input || !btn) return;
+
+  const url = input.value.trim();
+  if (!url) {
+    btn.textContent = '✗ No URL';
+    btn.style.color = 'var(--muted)';
+    setTimeout(() => { btn.textContent = 'Test'; btn.style.color = ''; }, 3000);
+    return;
+  }
+
+  btn.textContent = '⏳';
+  btn.disabled    = true;
+
+  const isXml  = t => t && t.trimStart().startsWith('<') && !/<html[\s>]/i.test(t);
+  const isRss  = t => /<rss[\s>]|<feed[\s>]|<channel[\s>]/i.test(t);
+  const hasItems = t => /<item[\s>]|<entry[\s>]/i.test(t);
+
+  const tryFetch = async (u) => {
+    try {
+      const r = await withTimeout(fetch(u), 8000, 'timeout');
+      return r.ok ? await r.text() : null;
+    } catch { return null; }
+  };
+
+  let xml = await tryFetch(url);
+  if (!isXml(xml)) xml = await tryFetch(CORS_PRIMARY  + encodeURIComponent(url));
+  if (!isXml(xml)) xml = await tryFetch(CORS_FALLBACK  + encodeURIComponent(url));
+  if (!isXml(xml)) xml = await tryFetch(CORS_FALLBACK2 + encodeURIComponent(url));
+
+  btn.disabled = false;
+
+  if (!xml) {
+    btn.textContent = '✗ Unreachable';
+    btn.style.color = '#e84a4a';
+  } else if (!isXml(xml)) {
+    btn.textContent = '✗ Not a feed';
+    btn.style.color = '#e84a4a';
+  } else if (!isRss(xml)) {
+    btn.textContent = '✗ Not RSS/Atom';
+    btn.style.color = '#e84a4a';
+  } else if (!hasItems(xml)) {
+    btn.textContent = '⚠ Feed empty';
+    btn.style.color = 'var(--accent)';
+  } else {
+    btn.textContent = '✓ Valid feed';
+    btn.style.color = '#4ae880';
+  }
+
+  setTimeout(() => { btn.textContent = 'Test'; btn.style.color = ''; }, 5000);
 }
 
 async function savePersonDetail() {
