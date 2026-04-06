@@ -363,6 +363,19 @@ def set_episode_guests(episode_id: str, guests: list, path: str = DB_PATH) -> No
             )
 
 
+def get_episode_guests(episode_id: str, path: str = DB_PATH) -> list:
+    """Return all guests for a specific episode."""
+    with get_db(path) as conn:
+        rows = conn.execute("""
+            SELECT g.id, g.name, eg.source
+            FROM episode_guests eg
+            JOIN guests g ON g.id = eg.guest_id
+            WHERE eg.episode_id = ?
+            ORDER BY g.name
+        """, (episode_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
 def search_guests(query: str, path: str = DB_PATH) -> list:
     """Search guests by name prefix. Returns list of {id, name, slug, person_id}."""
     pattern = f'%{query}%'

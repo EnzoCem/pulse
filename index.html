@@ -1889,6 +1889,7 @@ const _dbClient = {
   // Guests
   searchGuests:     (q)                         => _dbClient._call('GET',  `/api/db/guests?q=${encodeURIComponent(q)}`),
   setEpisodeGuests: (episodeId, guests)          => _dbClient._call('PUT',  `/api/db/episodes/${encodeURIComponent(episodeId)}/guests`, { guests }),
+  getEpisodeGuests: (episodeId)                  => _dbClient._call('GET',  `/api/db/episodes/${encodeURIComponent(episodeId)}/guests`),
   getGuestEpisodes: (guestId, limit=20)          => _dbClient._call('GET',  `/api/db/guests/${guestId}/episodes?limit=${limit}`),
   getCalibreText:   (calibreId)                  => _dbClient._call('GET',  `/api/calibre/text/${encodeURIComponent(calibreId)}`),
   setCalibreLink:   (entryId, personId, calibreId, calibreTitle, formats, contentType) =>
@@ -5035,6 +5036,20 @@ function openEntry(entry) {
         onfocus="this.style.borderColor='var(--accent)'"
         onblur="this.style.borderColor='var(--border)'"></textarea>
     </div>
+    <div id="guestSection" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Guests</div>
+      <div id="guestList" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <div style="flex:1;position:relative">
+          <input id="guestInput" type="text" placeholder="Add guest name…"
+            style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 8px"
+            oninput="_guestInputChanged(this.value)"
+            onkeydown="_guestInputKeydown(event)" />
+          <div id="guestSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;z-index:200;max-height:140px;overflow-y:auto"></div>
+        </div>
+        <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="_addGuestFromInput()">+ Add</button>
+      </div>
+    </div>
     <div id="transcriptArea"></div>
     <div id="ai-notes-area" style="display:none"></div>
     <div id="ask-sources-panel" style="display:none;margin-top:12px;padding:12px;background:var(--surface2);border-radius:6px;border:1px solid var(--border)">
@@ -5250,6 +5265,17 @@ function openEntry(entry) {
 
   _refreshWikiBtn();
 
+  // Guest section — show for podcast and youtube only
+  const guestSection = document.getElementById('guestSection');
+  if (guestSection) {
+    if ((entry.platform === 'podcast' || entry.platform === 'youtube') && _backendOnline) {
+      guestSection.style.display = '';
+      _loadModalGuests(entry.id);
+    } else {
+      guestSection.style.display = 'none';
+    }
+  }
+
   // → Calibre push button for non-book entries (youtube, podcast, blog, web articles)
   // Exclude Calibre article entries — they're already in Calibre, push button is meaningless
   const isCalibreEntry = entry.platform === 'article' && entry.link?.includes('/browse/book/');
@@ -5304,6 +5330,121 @@ function openEntry(entry) {
 
   document.getElementById('modalOverlay').classList.add('open');
   renderAllCards(); updateStatus();
+}
+
+// ── MODAL GUESTS ──────────────────────────────────────────────────────────
+let _modalGuests = [];    // [{id, name, source}] — working copy for current modal
+let _guestSuggestions = [];
+let _guestSuggestTimeout = null;
+
+async function _loadModalGuests(episodeId) {
+  const listEl = document.getElementById('guestList');
+  if (!listEl) return;
+  _modalGuests = [];
+  _renderGuestList();
+  try {
+    const result = await _dbClient.getEpisodeGuests(episodeId);
+    if (_currentModalEntry?.id !== episodeId) return;   // stale check
+    _modalGuests = result.guests || [];
+  } catch (e) {
+    if (_currentModalEntry?.id !== episodeId) return;   // stale check
+    // Backend offline or episode not in DB yet — start with empty list
+    _modalGuests = [];
+  }
+  _renderGuestList();
+}
+
+function _renderGuestList() {
+  const listEl = document.getElementById('guestList');
+  if (!listEl) return;
+  if (_modalGuests.length === 0) {
+    listEl.innerHTML = '<span style="font-size:11px;color:var(--muted);font-family:\'JetBrains Mono\',monospace">No guests added yet</span>';
+    return;
+  }
+  listEl.innerHTML = _modalGuests.map((g, i) => {
+    const isAI = g.source === 'ai_extracted';
+    return `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:3px 8px;font-size:12px;font-family:'JetBrains Mono',monospace">
+      ${isAI ? '<span title="Auto-extracted — please verify" style="color:var(--accent);font-size:10px">⚠</span>' : ''}
+      <span style="color:var(--text)">${escHtml(g.name)}</span>
+      <button onclick="_removeModalGuest(${i})" title="Remove" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:12px;padding:0 2px;line-height:1" onmouseover="this.style.color='var(--youtube)'" onmouseout="this.style.color='var(--muted)'">×</button>
+    </span>`;
+  }).join('');
+}
+
+function _removeModalGuest(idx) {
+  _modalGuests.splice(idx, 1);
+  _renderGuestList();
+  _saveModalGuests();
+}
+
+async function _saveModalGuests() {
+  if (!_currentModalEntry || !_backendOnline) return;
+  const guests = _modalGuests.map(g => ({ name: g.name, source: g.source || 'manual' }));
+  try {
+    await _dbClient.setEpisodeGuests(_currentModalEntry.id, guests);
+  } catch (e) {
+    console.warn('Failed to save guests:', e);
+  }
+}
+
+function _guestInputChanged(val) {
+  clearTimeout(_guestSuggestTimeout);
+  const sugEl = document.getElementById('guestSuggestions');
+  if (!sugEl) return;
+  if (!val || val.length < 2) { sugEl.style.display = 'none'; return; }
+  _guestSuggestTimeout = setTimeout(async () => {
+    try {
+      const result = await _dbClient.searchGuests(val);
+      _guestSuggestions = result.guests || [];
+      if (!_guestSuggestions.length) { sugEl.style.display = 'none'; return; }
+      sugEl.innerHTML = _guestSuggestions.map((g, i) =>
+        `<div onclick="_selectGuestSuggestion(${i})"
+          style="padding:6px 10px;cursor:pointer;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--text)"
+          onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background=''">${escHtml(g.name)}</div>`
+      ).join('');
+      sugEl.style.display = '';
+    } catch (e) {
+      sugEl.style.display = 'none';
+    }
+  }, 250);
+}
+
+function _selectGuestSuggestion(idx) {
+  const g = _guestSuggestions[idx];
+  if (!g) return;
+  const inputEl = document.getElementById('guestInput');
+  const sugEl   = document.getElementById('guestSuggestions');
+  if (sugEl) sugEl.style.display = 'none';
+  _addGuestByName(g.name, 'manual');
+  if (inputEl) inputEl.value = '';
+}
+
+function _guestInputKeydown(e) {
+  if (e.key === 'Enter') { e.preventDefault(); _addGuestFromInput(); }
+  if (e.key === 'Escape') {
+    const sugEl = document.getElementById('guestSuggestions');
+    if (sugEl) sugEl.style.display = 'none';
+  }
+}
+
+function _addGuestFromInput() {
+  const inputEl = document.getElementById('guestInput');
+  if (!inputEl) return;
+  const name = inputEl.value.trim();
+  if (!name) return;
+  inputEl.value = '';
+  const sugEl = document.getElementById('guestSuggestions');
+  if (sugEl) sugEl.style.display = 'none';
+  _addGuestByName(name, 'manual');
+}
+
+function _addGuestByName(name, source) {
+  if (!name) return;
+  const already = _modalGuests.some(g => g.name.toLowerCase() === name.toLowerCase());
+  if (already) return;
+  _modalGuests.push({ name, source: source || 'manual' });
+  _renderGuestList();
+  _saveModalGuests();
 }
 
 // ── NOTES ──
@@ -5568,6 +5709,11 @@ function _searchCountBar(count) {
 
 function closeModal(e) {
   if (!e || e.target === document.getElementById('modalOverlay') || !e.target) {
+    clearTimeout(_guestSuggestTimeout);
+    _guestSuggestions = [];
+    const sugEl = document.getElementById('guestSuggestions');
+    if (sugEl) sugEl.style.display = 'none';
+    _modalGuests = [];
     document.getElementById('modalOverlay').classList.remove('open');
     _currentModalEntry = null;
   }
@@ -7174,6 +7320,15 @@ function saveArticle() {
   renderAllCards();
   renderPersonDetail();
 }
+
+// ── GUEST SUGGESTION CLICK-OUTSIDE ──
+document.addEventListener('click', e => {
+  const sugEl = document.getElementById('guestSuggestions');
+  if (!sugEl || sugEl.style.display === 'none') return;
+  if (!sugEl.contains(e.target) && e.target.id !== 'guestInput') {
+    sugEl.style.display = 'none';
+  }
+});
 
 // ── INIT ──
 loadState();

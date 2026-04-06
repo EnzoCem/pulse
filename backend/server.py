@@ -513,15 +513,26 @@ def db_sync_episodes(person_id):
 
     _db.upsert_episodes(episodes, path=_db.DB_PATH)
 
-    # Auto-extract guests for each episode
-    for ep in episodes:
-        guests = _db.extract_guests_from_title(ep['title'])
-        if guests:
-            _db.set_episode_guests(ep['id'],
-                                   [{'name': g, 'source': 'ai_extracted'} for g in guests],
-                                   path=_db.DB_PATH)
+    # Auto-extract guests only for episodes with no existing guest associations
+    with _db.get_db(_db.DB_PATH) as conn:
+        for ep in episodes:
+            existing = conn.execute(
+                'SELECT 1 FROM episode_guests WHERE episode_id = ? LIMIT 1', (ep['id'],)
+            ).fetchone()
+            if not existing:
+                guests = _db.extract_guests_from_title(ep['title'])
+                if guests:
+                    _db.set_episode_guests(ep['id'],
+                                           [{'name': g, 'source': 'ai_extracted'} for g in guests],
+                                           path=_db.DB_PATH)
 
     return jsonify({'synced': len(episodes), 'total': len(episodes)})
+
+
+@app.route('/api/db/episodes/<episode_id>/guests', methods=['GET'])
+def db_get_episode_guests(episode_id):
+    """Get all guests for a specific episode."""
+    return jsonify({'guests': _db.get_episode_guests(episode_id, path=_db.DB_PATH)})
 
 
 @app.route('/api/db/episodes/<episode_id>/guests', methods=['PUT'])
