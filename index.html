@@ -5171,6 +5171,13 @@ function setSearch(q) {
   renderHistoryResults();
 }
 
+function setPersonSearch(q) {
+  personQuery = q.trim().toLowerCase();
+  const clearBtn = document.getElementById('personSearchClearBtn');
+  if (clearBtn) clearBtn.style.display = personQuery ? '' : 'none';
+  renderAllCards();
+}
+
 async function renderHistoryResults() {
   const section = document.getElementById('historyResults');
   if (!section) return;
