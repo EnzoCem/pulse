@@ -2606,6 +2606,7 @@ function switchView(v) {
   if (['people', 'timeline', 'library'].includes(v)) document.getElementById('tab-' + v)?.classList.add('active');
   // Body class drives CSS visibility of back btn, toolbar, tag row, tabs
   document.body.classList.toggle('view-person', v === 'person');
+  document.getElementById('personSearchRow').style.display = v === 'people' ? '' : 'none';
   if (v === 'timeline') renderTimeline();
   if (v === 'people')   { renderAllCards(); renderHistoryResults(); }
   if (v === 'library') { _libraryItems = []; _libraryOffset = 0; renderLibraryFilterBar(); loadLibrary(); }
