@@ -1693,6 +1693,7 @@
       <button id="aiNotesBtn"     class="btn btn-ghost" style="display:none" onclick="generateAINotes()">🤖 AI Notes</button>
       <button id="obsidianBtn"    class="btn btn-ghost" style="display:none" onclick="sendEpisodeToObsidian()">📓 Obsidian</button>
       <button id="wikiBtn"        class="btn btn-ghost" style="display:none" onclick="updateWikiFromTranscript()" title="Update this person's Obsidian wiki with the loaded transcript">🧠 Update Wiki</button>
+      <button id="guestAiBtn"     class="btn btn-ghost" style="display:none" onclick="findGuestsFromTranscript()" title="Use AI to identify guests from the loaded transcript">🎤 Find Guests</button>
       <button id="askSourcesBtn"  class="btn btn-ghost" style="display:none" onclick="askMySourcesToggle()" title="Query your curated NotebookLM notebooks">📔 My Notebooks</button>
       <a id="calibreBtn"     href="#" target="_blank" rel="noopener" class="btn btn-ghost"   style="display:none">📚 In Calibre</a>
       <button id="calibreUnlinkBtn" class="btn btn-ghost" style="display:none;font-size:10px;padding:3px 7px;color:var(--muted)" onclick="unlinkCalibre()">✕ Unlink</button>
@@ -2453,6 +2454,7 @@ async function loadYouTubeTranscript() {
             <div class="transcript-body">${escHtml(data.transcript)}</div>`;
           _currentTranscriptText = '📺 Source: YouTube\n\n' + data.transcript;
           _refreshWikiBtn();
+          _refreshGuestBtn();
           btn.textContent = '📄 Transcript ✓';
           return;
         }
@@ -2518,6 +2520,7 @@ async function loadYouTubeTranscript() {
       <div class="transcript-body">${escHtml(text)}</div>`;
     _currentTranscriptText = '📺 Source: YouTube\n\n' + text;
     _refreshWikiBtn();
+    _refreshGuestBtn();
     btn.textContent = '📄 Transcript ✓';
 
   } catch(e) {
@@ -2587,6 +2590,7 @@ async function loadTranscriptFromPage() {
     <div class="transcript-label">${escHtml(sourceNote)}</div>
     <div class="transcript-body">${escHtml(text)}</div>`;
   _refreshWikiBtn();
+  _refreshGuestBtn();
   btn.disabled    = false;
   btn.textContent = '📋 Transcript ✓';
 }
@@ -5168,6 +5172,12 @@ function openEntry(entry) {
   wikiBtn.disabled       = true;
   wikiBtn.style.opacity  = '';
   wikiBtn.textContent    = '🧠 Update Wiki';
+  const guestAiBtn = document.getElementById('guestAiBtn');
+  if (guestAiBtn) {
+    guestAiBtn.style.display = 'none';
+    guestAiBtn.disabled = true;
+    guestAiBtn.style.opacity = '';
+  }
   ytBtn.disabled = false;
   aiBtn.disabled = false;
   obsBtn.disabled = false;
@@ -5264,6 +5274,7 @@ function openEntry(entry) {
   }
 
   _refreshWikiBtn();
+  _refreshGuestBtn();
 
   // Guest section — show for podcast and youtube only
   const guestSection = document.getElementById('guestSection');
@@ -5489,6 +5500,26 @@ function _refreshWikiBtn() {
   btn.title = ready
     ? "Update this person's Obsidian wiki with the loaded transcript"
     : 'Load a transcript first, then click Update Wiki';
+}
+
+function _refreshGuestBtn() {
+  const btn = document.getElementById('guestAiBtn');
+  if (!btn) return;
+  const entry = _currentModalEntry;
+  if (!entry || (entry.platform !== 'podcast' && entry.platform !== 'youtube')) {
+    btn.style.display = 'none';
+    return;
+  }
+  btn.style.display = '';
+  if (_currentTranscriptText) {
+    btn.disabled = false;
+    btn.style.opacity = '';
+    btn.title = 'Use AI to identify guests from the loaded transcript';
+  } else {
+    btn.disabled = true;
+    btn.style.opacity = '0.4';
+    btn.title = 'Load a transcript first';
+  }
 }
 
 // ── EPISODE HISTORY (IndexedDB) ──
@@ -6193,6 +6224,73 @@ async function updateWikiFromTranscript() {
   } catch(e) {
     if (btn) { btn.disabled = false; btn.textContent = '🧠 Update Wiki'; }
     _showToast('Wiki update failed: ' + e.message, 5000);
+  }
+}
+
+async function findGuestsFromTranscript() {
+  const btn = document.getElementById('guestAiBtn');
+  if (!btn || !_currentTranscriptText || !_currentModalEntry) return;
+
+  const capturedEntryId = _currentModalEntry.id;
+
+  const cfg = JSON.parse(localStorage.getItem('pw-config') || '{}');
+  const apiKey = cfg.claudeApiKey || '';
+  if (!apiKey) {
+    alert('Add your Anthropic API key in Settings to use this feature.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '🎤 Finding…';
+  btn.style.opacity = '0.6';
+
+  try {
+    const system = `You are a helpful assistant that identifies podcast/YouTube guests from transcripts.
+Return ONLY a JSON array of guest full names, no other text.
+Example: ["John Smith", "Jane Doe"]
+If there are no guests (just the host speaking alone), return an empty array: []
+Do not include the host themselves — only guests who are interviewed or appear as speakers.`;
+
+    const user = `Here is the transcript. Identify all guests (not the host):\n\n${_currentTranscriptText.slice(0, 80000)}`;
+
+    const raw = await callClaude(apiKey, system, user, 256);
+
+    // Parse the JSON array from Claude's response
+    const match = raw.match(/\[[\s\S]*\]/);
+    if (!match) throw new Error('Unexpected response format');
+    const names = JSON.parse(match[0]);
+    if (!Array.isArray(names)) throw new Error('Expected array');
+
+    if (_currentModalEntry?.id !== capturedEntryId) return;  // modal changed
+
+    let added = 0;
+    for (const name of names) {
+      if (typeof name === 'string' && name.trim()) {
+        _addGuestByName(name.trim(), 'ai_extracted');
+        added++;
+      }
+    }
+
+    btn.textContent = added > 0 ? `🎤 Found ${added}` : '🎤 No guests';
+    btn.style.opacity = '0.5';
+    // Re-enable after a moment so user can run again
+    setTimeout(() => {
+      if (_currentModalEntry?.id !== capturedEntryId) return;  // modal changed
+      btn.textContent = '🎤 Find Guests';
+      btn.disabled = false;
+      btn.style.opacity = '';
+    }, 3000);
+
+  } catch (err) {
+    console.error('findGuestsFromTranscript error:', err);
+    btn.textContent = '🎤 Error';
+    btn.style.opacity = '0.5';
+    setTimeout(() => {
+      if (_currentModalEntry?.id !== capturedEntryId) return;  // modal changed
+      btn.textContent = '🎤 Find Guests';
+      btn.disabled = false;
+      btn.style.opacity = '';
+    }, 2000);
   }
 }
 
