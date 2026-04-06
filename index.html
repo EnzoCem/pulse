@@ -1565,6 +1565,26 @@
   <!-- Tag filter row — rendered dynamically when tags exist -->
   <div class="tag-filter-row" id="tagFilterRow"></div>
 
+  <!-- Person search row — filters the people grid; hidden in non-people views -->
+  <div id="personSearchRow" style="display:flex;align-items:center;justify-content:flex-end;padding:0 16px 8px;gap:8px">
+    <div style="position:relative">
+      <input id="personSearchInput" type="text"
+        style="background:var(--surface);border:1px solid var(--border);border-radius:20px;
+               color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;
+               padding:6px 28px 6px 12px;width:180px;outline:none;
+               transition:border-color 0.15s,width 0.2s"
+        placeholder="Search people…"
+        oninput="setPersonSearch(this.value)"
+        onkeydown="if(event.key==='Escape'){setPersonSearch('');this.value=''}"
+        onfocus="this.style.borderColor='var(--accent)';this.style.width='240px'"
+        onblur="this.style.borderColor='var(--border)';if(!personQuery)this.style.width='180px'">
+      <button id="personSearchClearBtn"
+        style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);
+               background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0;line-height:1"
+        onclick="setPersonSearch('');document.getElementById('personSearchInput').value=''">×</button>
+    </div>
+  </div>
+
   <!-- PEOPLE VIEW -->
   <div class="view active" id="view-people">
     <div class="persons-grid" id="personsGrid"></div>
