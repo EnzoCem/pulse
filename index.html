@@ -2340,6 +2340,70 @@ function _extractEpisodeNumber(title) {
   return m ? m[1] : null;
 }
 
+async function _findTranscriptUrl(pageHtml, episodeTitle) {
+  // Parse the transcripts page HTML into a document
+  const doc   = new DOMParser().parseFromString(pageHtml, 'text/html');
+  const links = Array.from(doc.querySelectorAll('a[href]'))
+    .map(a => ({ text: a.textContent.trim(), href: a.getAttribute('href') }))
+    .filter(l => l.href && !l.href.startsWith('#') && l.text.length > 1);
+
+  // ── Stage 1: episode number match ────────────────────────────────────────
+  const epNum = _extractEpisodeNumber(episodeTitle);
+  if (epNum) {
+    // Match the number as a standalone token (word boundary) in href or link text
+    const numRx = new RegExp('(?:^|\\D)' + epNum + '(?:\\D|$)');
+    const hit   = links.find(l => numRx.test(l.href) || numRx.test(l.text));
+    if (hit) return _resolveHref(hit.href, doc);
+  }
+
+  // ── Stage 2: title word overlap ──────────────────────────────────────────
+  const normalize = str => str.toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')          // strip punctuation
+    .replace(/^\s*#?\d{1,4}[\s:–—]+/, '') // strip leading episode number
+    .split(/\s+/).filter(w => w.length > 3); // words > 3 chars only
+
+  const titleWords = normalize(episodeTitle);
+  if (titleWords.length) {
+    let bestScore = 0, bestHref = null;
+    for (const link of links) {
+      const linkWords = normalize(link.text);
+      if (!linkWords.length) continue;
+      const matches = titleWords.filter(w => linkWords.includes(w)).length;
+      const score   = matches / titleWords.length;
+      if (score > bestScore) { bestScore = score; bestHref = link.href; }
+    }
+    if (bestScore >= 0.5) return _resolveHref(bestHref, doc);
+  }
+
+  // ── Stage 3: Claude fallback ──────────────────────────────────────────────
+  const apiKey = pwConfig.anthropicKey;
+  if (!apiKey) return null;
+
+  // Send only the link list — not the full HTML — to keep token use low
+  const linkList = links.slice(0, 200)
+    .map(l => `${l.text} → ${l.href}`)
+    .join('\n');
+  const system = 'You find transcript URLs. Reply with only the URL that matches the episode title, or the word null.';
+  const user   = `Episode title: ${episodeTitle}\n\nPage links:\n${linkList}`;
+  try {
+    const raw = await callClaude(apiKey, system, user, 256);
+    const url = (raw || '').trim();
+    if (url && url !== 'null' && url.startsWith('http')) return url;
+    // Claude may return a relative path — resolve it
+    if (url && url !== 'null' && url.startsWith('/')) return _resolveHref(url, doc);
+  } catch(_) {}
+
+  return null;
+}
+
+// Resolve a possibly-relative href against the document's base URL
+function _resolveHref(href, doc) {
+  if (!href) return null;
+  if (href.startsWith('http')) return href;
+  const base = doc.querySelector('base')?.href || doc.location?.href || '';
+  try { return new URL(href, base).href; } catch(_) { return href; }
+}
+
 // ── YOUTUBE TRANSCRIPT ──
 function extractYouTubeId(url) {
   const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
