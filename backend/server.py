@@ -384,6 +384,16 @@ def db_get_episodes(person_id):
                                     db_path=_db.DB_PATH))
 
 
+@app.route('/api/db/episodes/<episode_id>', methods=['DELETE'])
+def db_delete_episode(episode_id):
+    """Remove an episode record (used when a manually-added article is deleted)."""
+    with _db.get_db(_db.DB_PATH) as conn:
+        conn.execute('DELETE FROM episodes WHERE id = ?', (episode_id,))
+        conn.execute('DELETE FROM content_status WHERE entry_id = ?', (episode_id,))
+        conn.execute('DELETE FROM calibre_links WHERE entry_id = ?', (episode_id,))
+    return jsonify({'ok': True})
+
+
 @app.route('/api/db/episodes/upsert', methods=['POST'])
 def db_upsert_episodes():
     """

@@ -1139,6 +1139,8 @@
     border-radius: 6px; cursor: pointer; transition: background 0.12s;
   }
   .detail-entry-row:hover { background: var(--surface2); }
+  .detail-entry-row:hover .detail-entry-delete { opacity: 1 !important; }
+  .detail-entry-delete:hover { color: #e84a4a !important; }
   .detail-entry-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 6px; }
   .detail-entry-body { flex: 1; min-width: 0; }
   .detail-entry-title {
@@ -2867,6 +2869,14 @@ function renderPersonDetail() {
           return `<span class="tag-chip" style="background:${c}22;color:${c};font-size:9px;padding:1px 5px">${escHtml(t)}</span>`;
         }).join('');
         const isNew = !seenIds.has(entry.id);
+        const deleteBtn = entry.platform === 'article'
+          ? `<button onclick="event.stopPropagation();deleteArticleEntry('${escHtml(person.id)}','${escHtml(entry.id)}')"
+               title="Remove this article"
+               style="flex-shrink:0;background:none;border:none;cursor:pointer;
+                      color:var(--muted);font-size:14px;padding:2px 4px;line-height:1;
+                      opacity:0;transition:opacity .15s"
+               class="detail-entry-delete">✕</button>`
+          : '';
         return `
           <div class="detail-entry-row"
                data-eid="${escHtml(entry.id)}"
@@ -2882,6 +2892,7 @@ function renderPersonDetail() {
                 ${eTags}
               </div>
             </div>
+            ${deleteBtn}
           </div>`;
       }).join('');
 
@@ -3181,6 +3192,25 @@ async function refreshDetailPerson() {
   await fetchPerson(currentPerson);
   renderPersonDetail();
   if (btn) btn.classList.remove('spinning');
+}
+
+function deleteArticleEntry(personId, entryId) {
+  const person = persons.find(p => p.id === personId);
+  if (!person) return;
+  const entry = (person.entries || []).find(e => e.id === entryId);
+  if (!entry) return;
+  if (!confirm(`Remove "${entry.title}"?`)) return;
+
+  person.entries = person.entries.filter(e => e.id !== entryId);
+  saveState();
+
+  // Remove from SQLite if backend is online
+  if (_backendOnline) {
+    _dbClient._call('DELETE', `/api/db/episodes/${encodeURIComponent(entryId)}`).catch(() => {});
+  }
+
+  renderPersonDetail();
+  renderAllCards();
 }
 
 function deletePersonFromDetail() {
