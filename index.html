@@ -5174,6 +5174,20 @@ function openEntry(entry) {
     aiBtn.style.display  = '';   // AI Notes — fetches article text
     obsBtn.style.display = '';   // Obsidian
   } else if (entry.platform === 'article') {
+    // Sync to SQLite so the article appears in the Library tab (localStorage-only entries are missed otherwise)
+    if (_backendOnline) {
+      const _ap = persons.find(p => p.id === entry.personId);
+      _dbClient.upsertEpisodes([{
+        id:          entry.id,
+        person_id:   entry.personId,
+        person_name: _ap?.name || '',
+        platform:    'article',
+        title:       entry.title,
+        link:        entry.link,
+        description: entry.desc || '',
+        date:        entry.date || null,
+      }]).catch(() => {});
+    }
     // Manual article — web URL or Calibre PDF
     const isCalibreArticle = entry.link && entry.link.includes('/browse/book/');
     if (isCalibreArticle) {
@@ -7104,6 +7118,20 @@ function saveArticle() {
   if (isCalibre && _backendOnline) {
     _dbClient.setCalibreLink(entryId, person.id, _aaCalibreBook.bookId,
       _aaCalibreBook.title, _aaCalibreBook.formats, 'article').catch(() => {});
+  }
+
+  // Sync to SQLite so the article appears in the Library tab
+  if (_backendOnline) {
+    _dbClient.upsertEpisodes([{
+      id:          entryId,
+      person_id:   person.id,
+      person_name: person.name,
+      platform:    'article',
+      title,
+      link,
+      description: '',
+      date:        entry.date,
+    }]).catch(() => {});
   }
 
   saveState();
