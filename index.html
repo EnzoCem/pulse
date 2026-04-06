@@ -6231,6 +6231,8 @@ async function findGuestsFromTranscript() {
   const btn = document.getElementById('guestAiBtn');
   if (!btn || !_currentTranscriptText || !_currentModalEntry) return;
 
+  const capturedEntryId = _currentModalEntry.id;
+
   const cfg = JSON.parse(localStorage.getItem('pw-config') || '{}');
   const apiKey = cfg.claudeApiKey || '';
   if (!apiKey) {
@@ -6259,6 +6261,8 @@ Do not include the host themselves — only guests who are interviewed or appear
     const names = JSON.parse(match[0]);
     if (!Array.isArray(names)) throw new Error('Expected array');
 
+    if (_currentModalEntry?.id !== capturedEntryId) return;  // modal changed
+
     let added = 0;
     for (const name of names) {
       if (typeof name === 'string' && name.trim()) {
@@ -6271,6 +6275,7 @@ Do not include the host themselves — only guests who are interviewed or appear
     btn.style.opacity = '0.5';
     // Re-enable after a moment so user can run again
     setTimeout(() => {
+      if (_currentModalEntry?.id !== capturedEntryId) return;  // modal changed
       btn.textContent = '🎤 Find Guests';
       btn.disabled = false;
       btn.style.opacity = '';
@@ -6281,6 +6286,7 @@ Do not include the host themselves — only guests who are interviewed or appear
     btn.textContent = '🎤 Error';
     btn.style.opacity = '0.5';
     setTimeout(() => {
+      if (_currentModalEntry?.id !== capturedEntryId) return;  // modal changed
       btn.textContent = '🎤 Find Guests';
       btn.disabled = false;
       btn.style.opacity = '';
