@@ -2443,7 +2443,7 @@ async function loadYouTubeTranscript() {
               — ${data.segments} segments · via backend
             </div>
             <div class="transcript-body">${escHtml(data.transcript)}</div>`;
-          _currentTranscriptText = data.transcript;
+          _currentTranscriptText = '📺 Source: YouTube\n\n' + data.transcript;
           _refreshWikiBtn();
           btn.textContent = '📄 Transcript ✓';
           return;
@@ -2508,7 +2508,7 @@ async function loadYouTubeTranscript() {
         — ${segs.length} segments
       </div>
       <div class="transcript-body">${escHtml(text)}</div>`;
-    _currentTranscriptText = text;
+    _currentTranscriptText = '📺 Source: YouTube\n\n' + text;
     _refreshWikiBtn();
     btn.textContent = '📄 Transcript ✓';
 
