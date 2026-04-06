@@ -3725,7 +3725,9 @@ function renderAllCards() {
     const q = searchQuery;
     visible = visible.map(p => {
       const matched = (p.entries||[]).filter(e =>
-        e.title.toLowerCase().includes(q) || (e.desc||'').toLowerCase().includes(q));
+        e.title.toLowerCase().includes(q) ||
+        (e.desc||'').toLowerCase().includes(q) ||
+        (entryTags[e.id]||[]).some(t => t.toLowerCase().includes(q)));
       totalMatches += matched.length;
       return matched.length ? { ...p, _searchEntries: matched } : null;
     }).filter(Boolean);
@@ -3873,7 +3875,9 @@ function renderTimeline() {
   if (searchQuery) {
     const q = searchQuery;
     entries = entries.filter(e =>
-      e.title.toLowerCase().includes(q) || (e.desc||'').toLowerCase().includes(q));
+      e.title.toLowerCase().includes(q) ||
+      (e.desc||'').toLowerCase().includes(q) ||
+      (entryTags[e.id]||[]).some(t => t.toLowerCase().includes(q)));
   }
   _searchCountBar(entries.length);
   entries.sort((a, b) => new Date(b.date) - new Date(a.date));
