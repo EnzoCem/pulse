@@ -5062,13 +5062,18 @@ function openEntry(entry) {
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
       <div style="display:flex;align-items:center;gap:8px">
         ${statusDotHtml(entry)}
-        <span class="modal-platform-tag" style="background:${pl.color}20;color:${pl.color}">
-          ${pl.emoji} ${pl.label}
-        </span>
+        ${entry.isAppearance
+          ? `<span class="modal-platform-tag" style="background:var(--accent)20;color:var(--accent)">🎤 Guest Appearance</span>`
+          : `<span class="modal-platform-tag" style="background:${pl.color}20;color:${pl.color}">${pl.emoji} ${pl.label}</span>`
+        }
       </div>
       <span style="font-size:11px;color:var(--muted)">${escHtml(person.name||'')}</span>
     </div>
     <div class="modal-title">${escHtml(entry.title)}</div>
+    ${entry.isAppearance && entry.hostName
+      ? `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent);opacity:0.8;margin-bottom:2px">Guest on ${escHtml(entry.hostName)}${entry.hostPersonId ? ` <button onclick="openPersonDetail('${escHtml(entry.hostPersonId)}');closeModal()" style="background:none;border:none;cursor:pointer;color:var(--accent2);font-size:10px;margin-left:6px;padding:0;font-family:'JetBrains Mono',monospace">→ Open profile</button>` : ''}</div>`
+      : ''
+    }
     ${entry.author ? `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--blog);margin-bottom:2px">by ${escHtml(entry.author)}</div>` : ''}
     <div class="modal-meta">${formatFullDate(entry.date)}</div>
     ${descHtml || ''}
@@ -5241,7 +5246,11 @@ function openEntry(entry) {
   // Reset transcript text for this modal session
   _currentTranscriptText = '';
 
-  if (entry.platform === 'youtube') {
+  if (entry.isAppearance) {
+    if (entry.link) _showOpen(entry.link);
+    if (guestSection) guestSection.style.display = 'none';
+    // No transcript/wiki buttons for appearances — all buttons already hidden above
+  } else if (entry.platform === 'youtube') {
     // YouTube: inline transcript via captions API
     ytBtn.style.display = '';
     nbBtn.style.display  = '';   // NotebookLM — video URL is entry.link
