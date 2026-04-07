@@ -5368,7 +5368,7 @@ function openEntry(entry) {
   // Guest section — show for podcast and youtube only
   const guestSection = document.getElementById('guestSection');
   if (guestSection) {
-    if ((entry.platform === 'podcast' || entry.platform === 'youtube') && _backendOnline) {
+    if ((entry.platform === 'podcast' || entry.platform === 'youtube') && _backendOnline && !entry.isAppearance) {
       guestSection.style.display = '';
       _loadModalGuests(entry.id);
     } else {
@@ -5379,7 +5379,7 @@ function openEntry(entry) {
   // → Calibre push button for non-book entries (youtube, podcast, blog, web articles)
   // Exclude Calibre article entries — they're already in Calibre, push button is meaningless
   const isCalibreEntry = entry.platform === 'article' && entry.link?.includes('/browse/book/');
-  if (['youtube', 'podcast', 'blog', 'article'].includes(entry.platform) && _backendOnline && !isCalibreEntry) {
+  if (['youtube', 'podcast', 'blog', 'article'].includes(entry.platform) && _backendOnline && !isCalibreEntry && !entry.isAppearance) {
     // Check if already pushed to Calibre; if not, show push button
     _dbClient.getCalibreLink(entry.id).then(link => {
       const transcriptArea = document.getElementById('transcriptArea');
