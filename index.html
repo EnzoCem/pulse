@@ -4030,11 +4030,6 @@ function renderAllCards() {
       }).filter(Boolean)
     : persons;
 
-  // When appearance filter active, show only persons who have at least one appearance
-  if (currentFilter === 'appearance') {
-    visible = visible.filter(p => (p.appearances||[]).length > 0);
-  }
-
   // Filter grid by person name / description / tags
   if (personQuery) {
     visible = visible.filter(p =>
