@@ -4210,8 +4210,8 @@ function renderTimeline() {
 }
 
 function rebuildAllEntries() {
-  allEntries = [];
-  persons.forEach(p => (p.entries || []).forEach(e => allEntries.push(e)));
+  allEntries = persons.flatMap(p => _mergeEntriesAndAppearances(p));
+  allEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
 }
 
 // ── FETCH ──
@@ -5343,6 +5343,52 @@ function openEntry(entry) {
   document.getElementById('modalOverlay').classList.add('open');
   renderAllCards(); updateStatus();
 }
+
+// ── APPEARANCES ────────────────────────────────────────────────────────────
+/*
+ * AppearanceEntry — stored in person.appearances[] (localStorage)
+ * {
+ *   id:           string,              // "personId-appearance-<8-char hash>"
+ *   isAppearance: true,                // distinguishes from Entry
+ *   personId:     string,
+ *   platform:     'podcast'|'youtube'|'article'|'other',
+ *   title:        string,
+ *   link:         string,
+ *   desc:         string,              // max 300 chars
+ *   date:         string,              // ISO 8601, may be ''
+ *   hostName:     string,              // e.g. "Lex Fridman"
+ *   hostPersonId: string|null,
+ *   episodeId:    string|null,
+ *   addedHow:     'search'|'manual',
+ * }
+ */
+
+function _mergeEntriesAndAppearances(person) {
+  const entries     = (person.entries     || []).map(e => ({ ...e, isAppearance: false }));
+  const appearances = (person.appearances || []);
+  return [...entries, ...appearances].sort((a, b) =>
+    new Date(b.date || 0) - new Date(a.date || 0)
+  );
+}
+
+function _resolveHostPersonId(hostName) {
+  if (!hostName) return null;
+  const lower = hostName.toLowerCase();
+  const match = persons.find(p => p.name.toLowerCase() === lower
+    || p.name.toLowerCase().includes(lower)
+    || lower.includes(p.name.toLowerCase()));
+  return match ? match.id : null;
+}
+
+function _makeAppearanceId(personId, link) {
+  // Simple 8-char hash from link for stable IDs
+  let h = 0;
+  for (let i = 0; i < link.length; i++) h = (Math.imul(31, h) + link.charCodeAt(i)) | 0;
+  return `${personId}-appearance-${Math.abs(h).toString(36).slice(0, 8)}`;
+}
+
+let _appearanceFinderOpen = false;
+let _appearanceCandidates = [];
 
 // ── MODAL GUESTS ──────────────────────────────────────────────────────────
 let _modalGuests = [];    // [{id, name, source}] — working copy for current modal
