@@ -5636,9 +5636,9 @@ async function approveAppearance(personId, idx) {
   const countEl = document.querySelector('#appearance-finder-section .detail-section-title span');
   if (countEl) countEl.textContent = `(${person.appearances.length} saved)`;
 
-  // Link guest in SQLite if host is tracked and backend is online
-  if (hostPersonId && _backendOnline && candidate.hostName) {
-    _dbClient.linkGuestToPerson(candidate.hostName, personId).catch(() => {});
+  // Link the tracked person as a guest in SQLite (person.name is the guest, personId their ID)
+  if (hostPersonId && _backendOnline && person.name) {
+    _dbClient.linkGuestToPerson(person.name, personId).catch(() => {});
   }
 }
 
@@ -5767,8 +5767,9 @@ async function addAppearanceFromUrl(personId) {
   statusEl.textContent = `Added: ${resolved.title.slice(0, 60)}`;
   setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
 
-  if (hostPersonId && _backendOnline && resolved.hostName) {
-    _dbClient.linkGuestToPerson(resolved.hostName, personId).catch(() => {});
+  // Link the tracked person as a guest in SQLite (person.name is the guest, personId their ID)
+  if (hostPersonId && _backendOnline && person.name) {
+    _dbClient.linkGuestToPerson(person.name, personId).catch(() => {});
   }
 }
 
