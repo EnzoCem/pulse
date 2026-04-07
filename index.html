@@ -1696,6 +1696,7 @@
       <button id="aiNotesBtn"     class="btn btn-ghost" style="display:none" onclick="generateAINotes()">🤖 AI Notes</button>
       <button id="obsidianBtn"    class="btn btn-ghost" style="display:none" onclick="sendEpisodeToObsidian()">📓 Obsidian</button>
       <button id="wikiBtn"        class="btn btn-ghost" style="display:none" onclick="updateWikiFromTranscript()" title="Update this person's Obsidian wiki with the loaded transcript">🧠 Update Wiki</button>
+      <button id="briefBtn"       class="btn btn-ghost" style="display:none" onclick="generateEpisodeBrief()" title="Generate a structured reference brief for this episode">📋 Episode Brief</button>
       <button id="guestAiBtn"     class="btn btn-ghost" style="display:none" onclick="findGuestsFromTranscript()" title="Use AI to identify guests from the loaded transcript">🎤 Find Guests</button>
       <button id="askSourcesBtn"  class="btn btn-ghost" style="display:none" onclick="askMySourcesToggle()" title="Query your curated NotebookLM notebooks">📔 My Notebooks</button>
       <a id="calibreBtn"     href="#" target="_blank" rel="noopener" class="btn btn-ghost"   style="display:none">📚 In Calibre</a>
@@ -1927,6 +1928,7 @@ let searchQuery   = '';   // current search filter string
 let personQuery   = '';   // current person-grid filter string
 let _currentModalEntry = null;
 let _currentTranscriptText = '';  // transcript/article text for current modal, used by → Calibre push
+let _currentBriefMarkdown  = null; // generated brief for current modal, used by saveEpisodeBriefToObsidian
 let _libraryItems   = [];
 let _libraryTotal   = 0;
 let _libraryOffset  = 0;
@@ -2458,6 +2460,7 @@ async function loadYouTubeTranscript() {
             <div class="transcript-body">${escHtml(data.transcript)}</div>`;
           _currentTranscriptText = '📺 Source: YouTube\n\n' + data.transcript;
           _refreshWikiBtn();
+          _refreshBriefBtn();
           _refreshGuestBtn();
           btn.textContent = '📄 Transcript ✓';
           return;
@@ -2524,6 +2527,7 @@ async function loadYouTubeTranscript() {
       <div class="transcript-body">${escHtml(text)}</div>`;
     _currentTranscriptText = '📺 Source: YouTube\n\n' + text;
     _refreshWikiBtn();
+    _refreshBriefBtn();
     _refreshGuestBtn();
     btn.textContent = '📄 Transcript ✓';
 
@@ -2594,6 +2598,7 @@ async function loadTranscriptFromPage() {
     <div class="transcript-label">${escHtml(sourceNote)}</div>
     <div class="transcript-body">${escHtml(text)}</div>`;
   _refreshWikiBtn();
+  _refreshBriefBtn();
   _refreshGuestBtn();
   btn.disabled    = false;
   btn.textContent = '📋 Transcript ✓';
@@ -5256,6 +5261,12 @@ function openEntry(entry) {
   wikiBtn.disabled       = true;
   wikiBtn.style.opacity  = '';
   wikiBtn.textContent    = '🧠 Update Wiki';
+  const briefBtn = document.getElementById('briefBtn');
+  briefBtn.style.display  = 'none';
+  briefBtn.disabled       = true;
+  briefBtn.style.opacity  = '';
+  briefBtn.textContent    = '📋 Episode Brief';
+  document.getElementById('briefSection')?.remove();
   const guestAiBtn = document.getElementById('guestAiBtn');
   if (guestAiBtn) {
     guestAiBtn.style.display = 'none';
@@ -5286,6 +5297,7 @@ function openEntry(entry) {
     aiBtn.style.display  = '';   // AI Notes
     obsBtn.style.display = '';   // Obsidian
     wikiBtn.style.display = '';
+    briefBtn.style.display = '';
 
   } else if (entry.platform === 'podcast') {
     if (entry.transcriptUrl) {
@@ -5316,6 +5328,7 @@ function openEntry(entry) {
     aiBtn.style.display  = '';   // AI Notes
     obsBtn.style.display = '';   // Obsidian
     wikiBtn.style.display = '';
+    briefBtn.style.display = '';
 
   } else if (entry.platform === 'blog' || entry.platform === 'twitter') {
     // Blog / Substack / X: fetch article text for AI Notes; use URL for NotebookLM
@@ -5363,6 +5376,7 @@ function openEntry(entry) {
   }
 
   _refreshWikiBtn();
+  _refreshBriefBtn();
   _refreshGuestBtn();
 
   // Guest section — show for podcast and youtube only
@@ -6006,6 +6020,17 @@ function _refreshWikiBtn() {
     : 'Load a transcript first, then click Update Wiki';
 }
 
+function _refreshBriefBtn() {
+  const btn = document.getElementById('briefBtn');
+  if (!btn || btn.style.display === 'none') return;
+  const ready = !!_currentTranscriptText;
+  btn.disabled      = !ready;
+  btn.style.opacity = ready ? '' : '0.45';
+  btn.title = ready
+    ? 'Generate a structured reference brief for this episode'
+    : 'Load a transcript first, then click Episode Brief';
+}
+
 function _refreshGuestBtn() {
   const btn = document.getElementById('guestAiBtn');
   if (!btn) return;
@@ -6251,6 +6276,7 @@ function closeModal(e) {
     _modalGuests = [];
     document.getElementById('modalOverlay').classList.remove('open');
     _currentModalEntry = null;
+    _currentBriefMarkdown = null;
   }
 }
 
