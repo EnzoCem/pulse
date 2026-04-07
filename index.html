@@ -6827,10 +6827,10 @@ function parseWikiResponse(text) {
 }
 
 async function updateWikiFromTranscript() {
-  const entry  = _currentModalEntry;
-  const person = persons.find(p => p.id === entry?.personId) || {};
-
+  const entry = _currentModalEntry;
   if (!entry) return;
+
+  const person = persons.find(p => p.id === entry.personId) || {};
 
   if (!pwConfig.anthropicKey) {
     _showToast('Add your Anthropic API key in ⚙ Settings first', 3500);
@@ -6852,7 +6852,7 @@ async function updateWikiFromTranscript() {
 
   if (!await _ensureVaultPermission()) {
     _showToast('Obsidian vault permission denied — reconnect in ⚙ Settings', 4000);
-    if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+    if (btn) btn.disabled = false;
     return;
   }
 
@@ -6881,21 +6881,20 @@ async function updateWikiFromTranscript() {
     if (btn) btn.textContent = '🧠 Loading pages…';
 
     // ── Step 3: Read all pages in parallel ─────────────────────────────────
-    // Always include the catalog files so Claude can update them
-    const catalogPaths = [
-      `${safeFolder}/_index.md`,
-      'topics/_index.md',
-    ];
-    const pathsToRead = [...new Set([...catalogPaths, ...personPagePaths, ...selectedTopicPaths])];
-
-    const contents = await Promise.all(pathsToRead.map(p => readObsidianNote(p)));
-
-    // Build the pages Map — catalogs first so they appear at the top of the prompt
+    // Catalogs were already read in Step 1 — exclude them to avoid double reads.
+    // Deduplicate person page paths + topic paths; skip any already in the Map.
     const pages = new Map();
     pages.set(`${safeFolder}/_index.md`, personCatalogText);
     pages.set('topics/_index.md', topicsCatalogText);
-    pathsToRead.forEach((path) => {
-      if (!pages.has(path)) pages.set(path, contents[pathsToRead.indexOf(path)]);
+
+    const pathsToRead = [...new Set([...personPagePaths, ...selectedTopicPaths])].filter(
+      p => !pages.has(p)
+    );
+
+    const contents = await Promise.all(pathsToRead.map(p => readObsidianNote(p)));
+
+    pathsToRead.forEach((path, i) => {
+      pages.set(path, contents[i]);
     });
 
     if (btn) btn.textContent = '🧠 Calling Claude…';
