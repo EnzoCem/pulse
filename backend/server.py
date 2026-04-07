@@ -3,10 +3,12 @@ Pulse Backend — Phase 1: NotebookLM Q&A proxy
 Adapted from Brewing App backend/app.py
 """
 
+import hashlib
 import html as _html
 import os
 import re
 import subprocess
+import time
 from flask import Flask, jsonify, request, make_response
 import db as _db
 import requests as _requests  # for server-side RSS fetch in episode sync
@@ -412,6 +414,96 @@ def db_upsert_episodes():
         return jsonify({'error': str(e)}), 500
 
 
+def _pi_headers(api_key, api_secret):
+    """Build Podcast Index authentication headers (SHA-1 of key+secret+epoch)."""
+    epoch     = int(time.time())
+    auth_hash = hashlib.sha1(f'{api_key}{api_secret}{epoch}'.encode()).hexdigest()
+    return {
+        'X-Auth-Key':  api_key,
+        'X-Auth-Date': str(epoch),
+        'Authorization': auth_hash,
+        'User-Agent':  'Pulse/1.0',
+    }
+
+
+def _fetch_podcast_index_episodes(rss_url, api_key, api_secret, person_id, person_name):
+    """
+    Fetch the complete episode list from Podcast Index for a given RSS feed URL.
+    Returns a list of episode dicts in the same shape as the RSS/iTunes results.
+    Paginates using the `before` parameter (Unix timestamp) until no more results.
+    """
+    BASE = 'https://api.podcastindex.org/api/1.0'
+    episodes = []
+
+    # Step 1 — resolve RSS URL to a Podcast Index feed ID
+    try:
+        resp = _requests.get(
+            f'{BASE}/podcasts/byfeedurl',
+            params={'url': rss_url},
+            headers=_pi_headers(api_key, api_secret),
+            timeout=15,
+        )
+        resp.raise_for_status()
+        feed_id = resp.json().get('feed', {}).get('id')
+        if not feed_id:
+            return []
+    except Exception:
+        return []
+
+    # Step 2 — paginate through all episodes
+    before = None
+    while True:
+        params = {'id': feed_id, 'max': 1000, 'fulltext': 'false'}
+        if before:
+            params['before'] = before
+        try:
+            resp = _requests.get(
+                f'{BASE}/episodes/byfeedid',
+                params=params,
+                headers=_pi_headers(api_key, api_secret),
+                timeout=20,
+            )
+            resp.raise_for_status()
+            items = resp.json().get('items', [])
+        except Exception:
+            break
+
+        if not items:
+            break
+
+        for item in items:
+            # Prefer enclosure URL (audio file) over webpage link
+            link = item.get('enclosureUrl') or item.get('link') or ''
+            if not link:
+                continue
+            ep_id = f'{person_id}-podcast-{link}'[:80]
+            dur   = item.get('duration') or 0
+            episodes.append({
+                'id':               ep_id,
+                'person_id':        person_id,
+                'person_name':      person_name,
+                'platform':         'podcast',
+                'title':            item.get('title') or '',
+                'link':             link,
+                'description':      (item.get('description') or '')[:500],
+                'date':             str(item.get('datePublished') or ''),
+                'duration_sec':     int(dur) if dur else None,
+                'episode_number':   item.get('episode'),
+                'itunes_episode_id': None,
+            })
+
+        # If fewer than 1000 returned we've reached the end
+        if len(items) < 1000:
+            break
+
+        # Next page: episodes published before the oldest one in this batch
+        before = min(item.get('datePublished') or 0 for item in items)
+        if not before:
+            break
+
+    return episodes
+
+
 @app.route('/api/db/episodes/sync/<person_id>', methods=['POST'])
 def db_sync_episodes(person_id):
     """
@@ -423,6 +515,8 @@ def db_sync_episodes(person_id):
     person_name = (data.get('person_name') or '').strip()
     rss_url     = (data.get('rss_url')     or '').strip() or None
     itunes_id   = data.get('itunes_id')
+    pi_key      = (data.get('podcast_index_key')    or '').strip() or None
+    pi_secret   = (data.get('podcast_index_secret') or '').strip() or None
 
     if not person_name:
         return jsonify({'error': 'person_name is required'}), 400
@@ -510,6 +604,16 @@ def db_sync_episodes(person_id):
                 })
         except Exception as e:
             return jsonify({'error': f'iTunes fetch failed: {e}'}), 500
+
+    # Podcast Index — full archive, supplements RSS+iTunes when credentials provided
+    if pi_key and pi_secret and rss_url:
+        pi_episodes = _fetch_podcast_index_episodes(rss_url, pi_key, pi_secret, person_id, person_name)
+        if pi_episodes:
+            existing_links = {ep['link'] for ep in episodes}
+            for ep in pi_episodes:
+                if ep['link'] not in existing_links:
+                    existing_links.add(ep['link'])
+                    episodes.append(ep)
 
     _db.upsert_episodes(episodes, path=_db.DB_PATH)
 

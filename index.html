@@ -1494,6 +1494,15 @@
     <div class="form-row" style="margin-top:8px">
       <button class="btn btn-ghost" id="calibreTestBtn" type="button" onclick="testCalibreConnection()">Test Connection</button>
     </div>
+    <div class="settings-section-title" style="margin-top:16px">Podcast Index</div>
+    <div class="form-row">
+      <label>API Key <span style="color:var(--muted);font-weight:400">(free at <a href="https://podcastindex.org/developers" target="_blank" rel="noopener" style="color:var(--accent2)">podcastindex.org</a> — enables full episode archives beyond iTunes' 200-episode limit)</span></label>
+      <input type="password" id="cfg-pi-key" placeholder="API key" autocomplete="off">
+    </div>
+    <div class="form-row" style="margin-top:6px">
+      <label>API Secret</label>
+      <input type="password" id="cfg-pi-secret" placeholder="API secret" autocomplete="off">
+    </div>
     <div class="settings-section-title" style="margin-top:16px">Obsidian Vault</div>
     <div class="form-row">
       <label>Vault folder <span style="color:var(--muted);font-weight:400">(pick once — browser remembers permission)</span></label>
@@ -1885,9 +1894,10 @@ const _dbClient = {
   // Episodes
   getEpisodes:      (personId, limit=50, offset=0) =>
     _dbClient._call('GET', `/api/db/episodes/${encodeURIComponent(personId)}?limit=${limit}&offset=${offset}`),
-  syncEpisodes:     (personId, personName, rssUrl, itunesId) =>
+  syncEpisodes:     (personId, personName, rssUrl, itunesId, piKey, piSecret) =>
     _dbClient._call('POST', `/api/db/episodes/sync/${encodeURIComponent(personId)}`,
-                    { person_name: personName, rss_url: rssUrl, itunes_id: itunesId }),
+                    { person_name: personName, rss_url: rssUrl, itunes_id: itunesId,
+                      podcast_index_key: piKey || null, podcast_index_secret: piSecret || null }),
   upsertEpisodes:   (episodes) =>
     _dbClient._call('POST', '/api/db/episodes/upsert', { episodes }),
 
@@ -2017,17 +2027,19 @@ Concrete things a reader could do or apply based on this article.
 Be precise. Use exact names and numbers when mentioned. If a section has no relevant content, write "Not discussed".`;
 
 let pwConfig      = {     // persisted in pw-config
-  anthropicKey:      '',
-  notebookLMUrl:     '',
-  aiPromptPodcast:   '',   // full prompt for podcast/youtube — defaults to DEFAULT_PODCAST_PROMPT
-  aiPromptArticle:   '',   // full prompt for blog/twitter  — defaults to DEFAULT_ARTICLE_PROMPT
-  obsidianSubfolder: 'Pulse',
-  obsidianAutoSave:  false,
-  calibreUrl:        'http://localhost:8080',
-  calibreUser:       '',
-  calibrePass:       '',
-  notebookLibrary:   {},   // { "Notebook Name": notebookUrl } — user's curated notebooks
-  notebookSkillPath: '',   // informational only; backend uses its own default path
+  anthropicKey:       '',
+  notebookLMUrl:      '',
+  aiPromptPodcast:    '',   // full prompt for podcast/youtube — defaults to DEFAULT_PODCAST_PROMPT
+  aiPromptArticle:    '',   // full prompt for blog/twitter  — defaults to DEFAULT_ARTICLE_PROMPT
+  obsidianSubfolder:  'Pulse',
+  obsidianAutoSave:   false,
+  calibreUrl:         'http://localhost:8080',
+  calibreUser:        '',
+  calibrePass:        '',
+  notebookLibrary:    {},   // { "Notebook Name": notebookUrl } — user's curated notebooks
+  notebookSkillPath:  '',   // informational only; backend uses its own default path
+  podcastIndexKey:    '',   // Podcast Index API key (podcastindex.org) — enables full episode archive
+  podcastIndexSecret: '',   // Podcast Index API secret
 };
 let _vaultHandle = null;  // FileSystemDirectoryHandle for Obsidian vault
 
@@ -5063,11 +5075,14 @@ function renderEpisodeArchiveList(person, total, append) {
 
 async function syncEpisodeArchive(person) {
   const btn = document.getElementById('syncArchiveBtn');
+  const hasPI = !!(pwConfig.podcastIndexKey && pwConfig.podcastIndexSecret);
   if (btn) { btn.disabled = true; btn.textContent = '⟳ Syncing…'; }
   const result = await _dbClient.syncEpisodes(
     person.id, person.name,
     person.feeds?.podcast || null,
-    person.itunesId || null
+    person.itunesId || null,
+    hasPI ? pwConfig.podcastIndexKey    : null,
+    hasPI ? pwConfig.podcastIndexSecret : null
   );
   if (btn) {
     btn.disabled = false;
@@ -7392,6 +7407,8 @@ function toggleSettings() {
     document.getElementById('cfg-calibre-url').value         = pwConfig.calibreUrl        || 'http://localhost:8080';
     document.getElementById('cfg-calibre-user').value        = pwConfig.calibreUser       || '';
     document.getElementById('cfg-calibre-pass').value        = pwConfig.calibrePass       || '';
+    document.getElementById('cfg-pi-key').value              = pwConfig.podcastIndexKey    || '';
+    document.getElementById('cfg-pi-secret').value           = pwConfig.podcastIndexSecret || '';
     document.getElementById('cfg-obsidian-subfolder').value  = pwConfig.obsidianSubfolder  || 'Pulse';
     document.getElementById('cfg-obsidian-autosave').checked = !!pwConfig.obsidianAutoSave;
     _refreshVaultNameTag();
@@ -7406,9 +7423,11 @@ function saveSettings() {
   pwConfig.aiPromptPodcast   = document.getElementById('cfg-ai-prompt-podcast').value.trim();
   pwConfig.aiPromptArticle   = document.getElementById('cfg-ai-prompt-article').value.trim();
   pwConfig.notebookLibrary   = _readNotebookLibraryFromUI();
-  pwConfig.calibreUrl        = document.getElementById('cfg-calibre-url').value.trim()  || 'http://localhost:8080';
-  pwConfig.calibreUser       = document.getElementById('cfg-calibre-user').value.trim();
-  pwConfig.calibrePass       = document.getElementById('cfg-calibre-pass').value;
+  pwConfig.calibreUrl         = document.getElementById('cfg-calibre-url').value.trim()  || 'http://localhost:8080';
+  pwConfig.calibreUser        = document.getElementById('cfg-calibre-user').value.trim();
+  pwConfig.calibrePass        = document.getElementById('cfg-calibre-pass').value;
+  pwConfig.podcastIndexKey    = document.getElementById('cfg-pi-key').value.trim();
+  pwConfig.podcastIndexSecret = document.getElementById('cfg-pi-secret').value.trim();
   pwConfig.obsidianSubfolder = document.getElementById('cfg-obsidian-subfolder').value.trim() || 'Pulse';
   pwConfig.obsidianAutoSave  = document.getElementById('cfg-obsidian-autosave').checked;
   searchCalibre.cache.clear(); // clear cache when settings change
