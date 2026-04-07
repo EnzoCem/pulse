@@ -5374,17 +5374,20 @@ function _mergeEntriesAndAppearances(person) {
 function _resolveHostPersonId(hostName) {
   if (!hostName) return null;
   const lower = hostName.toLowerCase();
-  const match = persons.find(p => p.name.toLowerCase() === lower
-    || p.name.toLowerCase().includes(lower)
+  // Priority: exact match first, then partial match
+  const exact = persons.find(p => p.name.toLowerCase() === lower);
+  if (exact) return exact.id;
+  const partial = persons.find(p => p.name.toLowerCase().includes(lower)
     || lower.includes(p.name.toLowerCase()));
-  return match ? match.id : null;
+  return partial ? partial.id : null;
 }
 
 function _makeAppearanceId(personId, link) {
   // Simple 8-char hash from link for stable IDs
+  const safeLink = link || '';
   let h = 0;
-  for (let i = 0; i < link.length; i++) h = (Math.imul(31, h) + link.charCodeAt(i)) | 0;
-  return `${personId}-appearance-${Math.abs(h).toString(36).slice(0, 8)}`;
+  for (let i = 0; i < safeLink.length; i++) h = (Math.imul(31, h) + safeLink.charCodeAt(i)) | 0;
+  return `${personId}-appearance-${Math.abs(h).toString(36).padStart(8, '0').slice(0, 8)}`;
 }
 
 let _appearanceFinderOpen = false;
