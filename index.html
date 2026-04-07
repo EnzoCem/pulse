@@ -1014,8 +1014,6 @@
     transition: color 0.15s, border-color 0.15s;
   }
   .detail-history-btn:hover { color: var(--accent); border-color: var(--accent); }
-  .detail-history-btn:disabled { opacity: 0.5; cursor: default; }
-  .detail-history-msg { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
 
   /* Vault picker */
   .vault-pick-btn {
@@ -1900,6 +1898,8 @@ const _dbClient = {
                       podcast_index_key: piKey || null, podcast_index_secret: piSecret || null }),
   upsertEpisodes:   (episodes) =>
     _dbClient._call('POST', '/api/db/episodes/upsert', { episodes }),
+  searchEpisodes:   (q, limit=50) =>
+    _dbClient._call('GET', `/api/db/episodes/search?q=${encodeURIComponent(q)}&limit=${limit}`),
 
   // Guests
   searchGuests:     (q)                         => _dbClient._call('GET',  `/api/db/guests?q=${encodeURIComponent(q)}`),
@@ -1950,7 +1950,6 @@ let _libraryFilters = {
 let _episodeArchive = [];        // cached episodes for current person
 let _episodeArchiveOffset = 0;   // pagination offset
 const EPISODE_PAGE_SIZE = 50;
-let _episodeDB    = null; // IndexedDB handle for full episode history
 let _addType      = 'person'; // 'person' | 'source' — current Add panel mode
 const DEFAULT_PODCAST_PROMPT = `You are an expert research assistant that extracts structured intelligence from podcast and video episodes.
 
@@ -2992,9 +2991,6 @@ function renderPersonDetail() {
         <button class="detail-delete-btn" onclick="deletePersonFromDetail()">Delete Person</button>
       </div>
       <div class="detail-history-row" id="detail-history-row">
-        <button class="detail-history-btn" id="load-history-btn"
-          onclick="loadPodcastHistory(currentPerson.id)">⬇ Load Full History</button>
-        <span class="detail-history-msg" id="history-status-msg"></span>
         <button class="detail-history-btn" style="margin-left:auto"
           onclick="exportPersonToObsidian(currentPerson.id)">📓 Export to Obsidian</button>
       </div>
@@ -3016,20 +3012,9 @@ function renderPersonDetail() {
 
   renderDetailTagChips();
 
-  // Show "Load Full History" only for persons with a podcast feed
+  // Export to Obsidian row — always visible
   const histRow = document.getElementById('detail-history-row');
-  if (histRow) {
-    if (person.feeds.podcast) {
-      histRow.style.display = '';
-      // Async: update button label if episodes already loaded
-      countEpisodesForPerson(person.id).then(n => {
-        const btn = document.getElementById('load-history-btn');
-        if (btn && n > 0) btn.textContent = `⟳ Reload History (${n} stored)`;
-      }).catch(() => {});
-    } else {
-      histRow.style.display = 'none';
-    }
-  }
+  if (histRow) histRow.style.display = '';
 
   // All Episodes section — appended after the main innerHTML
   if (_backendOnline && (currentPerson.feeds?.podcast || currentPerson.itunesId)) {
@@ -6096,129 +6081,6 @@ function _refreshGuestBtn() {
   }
 }
 
-// ── EPISODE HISTORY (IndexedDB) ──
-function openEpisodeDB() {
-  if (_episodeDB) return Promise.resolve(_episodeDB);
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('pulse-episodes', 1);
-    req.onupgradeneeded = e => {
-      const store = e.target.result.createObjectStore('episodes', { keyPath: 'id' });
-      store.createIndex('personId', 'personId', { unique: false });
-    };
-    req.onsuccess = e => { _episodeDB = e.target.result; resolve(_episodeDB); };
-    req.onerror   = e => reject(e.target.error);
-  });
-}
-
-async function storeEpisodes(episodes) {
-  const db = await openEpisodeDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('episodes', 'readwrite');
-    const store = tx.objectStore('episodes');
-    episodes.forEach(ep => store.put(ep));
-    tx.oncomplete = () => resolve(episodes.length);
-    tx.onerror    = e => reject(e.target.error);
-  });
-}
-
-async function countEpisodesForPerson(personId) {
-  const db = await openEpisodeDB();
-  return new Promise((resolve, reject) => {
-    const tx    = db.transaction('episodes', 'readonly');
-    const index = tx.objectStore('episodes').index('personId');
-    const req   = index.count(personId);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror   = e => reject(e.target.error);
-  });
-}
-
-async function searchEpisodesInDB(personId, query) {
-  const db = await openEpisodeDB();
-  return new Promise((resolve, reject) => {
-    const tx    = db.transaction('episodes', 'readonly');
-    const index = tx.objectStore('episodes').index('personId');
-    const req   = index.getAll(personId);
-    req.onsuccess = () => {
-      const q = query.toLowerCase();
-      resolve(req.result.filter(ep =>
-        (ep.title || '').toLowerCase().includes(q) ||
-        (ep.desc  || '').toLowerCase().includes(q)
-      ));
-    };
-    req.onerror = e => reject(e.target.error);
-  });
-}
-
-async function loadPodcastHistory(personId) {
-  const person = persons.find(p => p.id === personId);
-  if (!person) return;
-
-  const btn = document.getElementById('load-history-btn');
-  const msg = document.getElementById('history-status-msg');
-  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
-  if (msg) msg.textContent = '';
-
-  try {
-    // Step 1: Resolve itunesId if not already saved
-    let itunesId = person.itunesId;
-    if (!itunesId) {
-      const search = await fetch(
-        `https://itunes.apple.com/search?term=${encodeURIComponent(person.name)}&media=podcast&entity=podcast&limit=5`,
-        { signal: AbortSignal.timeout(8000) }
-      ).then(r => r.json()).catch(() => ({ results: [] }));
-      const match = search.results.find(r => r.feedUrl === person.feeds.podcast) || search.results[0];
-      if (match?.collectionId) {
-        itunesId = match.collectionId;
-        person.itunesId = itunesId;
-        saveState();
-      }
-    }
-
-    if (!itunesId) {
-      if (msg) msg.textContent = 'Could not find iTunes ID for this podcast.';
-      if (btn) { btn.disabled = false; btn.textContent = '⬇ Load Full History'; }
-      return;
-    }
-
-    // Step 2: Fetch up to 200 episodes from iTunes
-    const data = await fetch(
-      `https://itunes.apple.com/lookup?id=${itunesId}&entity=podcastEpisode&limit=200`,
-      { signal: AbortSignal.timeout(15000) }
-    ).then(r => r.json()).catch(() => ({ results: [] }));
-
-    const episodes = (data.results || [])
-      .filter(r => r.wrapperType === 'podcastEpisode')
-      .map(r => ({
-        id:       `${personId}|itunes|${r.trackId || r.trackViewUrl}`,
-        personId,
-        title:    r.trackName || '',
-        desc:     (r.description || r.shortDescription || '').slice(0, 500),
-        link:     r.episodeUrl || r.trackViewUrl || '',
-        date:     r.releaseDate || '',
-        platform: 'podcast',
-      }));
-
-    if (episodes.length === 0) {
-      if (msg) msg.textContent = 'No episodes found.';
-      if (btn) { btn.disabled = false; btn.textContent = '⬇ Load Full History'; }
-      return;
-    }
-
-    await storeEpisodes(episodes);
-    const total = await countEpisodesForPerson(personId);
-
-    if (msg) msg.textContent = `${total} episodes stored`;
-    if (btn) { btn.disabled = false; btn.textContent = '⟳ Reload History'; }
-
-    // Re-run search if active
-    if (searchQuery) setSearch(searchQuery);
-
-  } catch (err) {
-    if (msg) msg.textContent = 'Error: ' + err.message;
-    if (btn) { btn.disabled = false; btn.textContent = '⬇ Load Full History'; }
-  }
-}
-
 // ── SEARCH ──
 function setSearch(q) {
   searchQuery = q.trim().toLowerCase();
@@ -6240,50 +6102,54 @@ async function renderHistoryResults() {
   const section = document.getElementById('historyResults');
   if (!section) return;
 
-  if (!searchQuery || currentView !== 'people') {
+  if (!searchQuery || currentView !== 'people' || !_backendOnline) {
     section.style.display = 'none';
     section.innerHTML = '';
     return;
   }
 
-  // Search all persons that have episode history
-  const allMatches = [];
-  for (const person of persons) {
-    if (!person.itunesId) continue;
-    try {
-      const hits = await searchEpisodesInDB(person.id, searchQuery);
-      hits.forEach(ep => allMatches.push({ ep, person }));
-    } catch (_) {}
-  }
-
-  if (allMatches.length === 0) {
+  const result = await _dbClient.searchEpisodes(searchQuery, 50);
+  if (!result || !result.episodes || result.episodes.length === 0) {
     section.style.display = 'none';
     section.innerHTML = '';
     return;
   }
 
-  // Sort by date desc
-  allMatches.sort((a, b) => (b.ep.date > a.ep.date ? 1 : -1));
-
-  const rows = allMatches.map(({ ep, person }) => {
+  const episodes = result.episodes;
+  const rows = episodes.map(ep => {
+    const person = persons.find(p => p.id === ep.person_id);
     const d = ep.date ? new Date(ep.date).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' }) : '';
-    const avatarHtml = person.avatar
+    const avatarHtml = person?.avatar
       ? `<img class="hist-avatar" src="${escHtml(person.avatar)}" onerror="this.style.display='none'">`
-      : `<div class="hist-avatar-ph">${getInitials(person.name)}</div>`;
+      : `<div class="hist-avatar-ph">${getInitials(ep.person_name || '?')}</div>`;
+    const entryObj = {
+      id:       ep.id,
+      personId: ep.person_id,
+      platform: ep.platform || 'podcast',
+      title:    ep.title,
+      link:     ep.link,
+      desc:     ep.description || '',
+      date:     ep.date,
+    };
     return `
-      <div class="hist-row" onclick='openHistoryEntry(${JSON.stringify(ep).replace(/'/g,"&#39;")})'>
+      <div class="hist-row" onclick='openHistoryEntry(${JSON.stringify(entryObj).replace(/'/g,"&#39;")})'>
         ${avatarHtml}
         <div class="hist-info">
           <div class="hist-title">${escHtml(ep.title)}</div>
-          <div class="hist-meta"><span class="hist-person">${escHtml(person.name)}</span>${d ? ` · ${d}` : ''}</div>
+          <div class="hist-meta"><span class="hist-person">${escHtml(ep.person_name || '')}</span>${d ? ` · ${d}` : ''}</div>
         </div>
       </div>`;
   }).join('');
 
+  const total   = result.total || episodes.length;
+  const showing = episodes.length;
+  const countLabel = total > showing
+    ? `${total} matches <span class="hist-sub">(showing top ${showing})</span>`
+    : `${showing} match${showing !== 1 ? 'es' : ''}`;
+
   section.innerHTML = `
     <div class="hist-header">
-      📚 Episode History — ${allMatches.length} match${allMatches.length !== 1 ? 'es' : ''} for "<em>${escHtml(searchQuery)}</em>"
-      <span class="hist-sub">(from loaded history — use ⬇ Load Full History in person detail)</span>
+      📚 Episode Archive — ${countLabel} for "<em>${escHtml(searchQuery)}</em>"
     </div>
     <div class="hist-list">${rows}</div>`;
   section.style.display = '';

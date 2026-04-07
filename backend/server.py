@@ -374,6 +374,30 @@ def db_push_to_calibre():
 # DB — Episodes
 # ═══════════════════════════════════════════════════════════════════════════════
 
+@app.route('/api/db/episodes/search', methods=['GET'])
+def db_search_episodes():
+    """Full-text search across all episodes (title + description)."""
+    q     = (request.args.get('q') or '').strip()
+    try:
+        limit = min(int(request.args.get('limit', 50)), 200)
+    except (ValueError, TypeError):
+        limit = 50
+    if not q:
+        return jsonify({'episodes': [], 'total': 0})
+    pattern = f'%{q}%'
+    with _db.get_db(_db.DB_PATH) as conn:
+        total = conn.execute(
+            'SELECT COUNT(*) FROM episodes WHERE title LIKE ? OR description LIKE ?',
+            (pattern, pattern)
+        ).fetchone()[0]
+        rows = conn.execute(
+            'SELECT * FROM episodes WHERE title LIKE ? OR description LIKE ?'
+            ' ORDER BY date DESC LIMIT ?',
+            (pattern, pattern, limit)
+        ).fetchall()
+    return jsonify({'episodes': [dict(r) for r in rows], 'total': total})
+
+
 @app.route('/api/db/episodes/<person_id>', methods=['GET'])
 def db_get_episodes(person_id):
     try:
