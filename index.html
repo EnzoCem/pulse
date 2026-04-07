@@ -5446,9 +5446,22 @@ function _removeModalGuest(idx) {
 
 async function _saveModalGuests() {
   if (!_currentModalEntry || !_backendOnline) return;
+  const entry  = _currentModalEntry;
+  const person = persons.find(p => p.id === entry.personId) || {};
+  // Ensure episode row exists in SQLite before writing to episode_guests (FK constraint)
+  await _dbClient.upsertEpisodes([{
+    id:          entry.id,
+    person_id:   entry.personId,
+    person_name: person.name || '',
+    platform:    entry.platform,
+    title:       entry.title  || '',
+    link:        entry.link   || '',
+    description: entry.desc   || '',
+    date:        entry.date   || null,
+  }]).catch(() => {});
   const guests = _modalGuests.map(g => ({ name: g.name, source: g.source || 'manual' }));
   try {
-    await _dbClient.setEpisodeGuests(_currentModalEntry.id, guests);
+    await _dbClient.setEpisodeGuests(entry.id, guests);
   } catch (e) {
     console.warn('Failed to save guests:', e);
   }
