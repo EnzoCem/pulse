@@ -6602,6 +6602,30 @@ function buildPersonNote(person) {
 
 // ── LLM WIKI ──
 
+// ── WIKI HELPERS ──────────────────────────────────────────────────────────
+
+/**
+ * Parse a _index.md catalog string into an array of page descriptors.
+ * Each non-blank line must be: path | type | one-line summary
+ * Lines that don't match the pattern are silently skipped.
+ * @param {string|null} catalogText — raw file content, or null if file not yet created
+ * @returns {{ path: string, type: string, summary: string }[]}
+ */
+function _parseCatalog(catalogText) {
+  if (!catalogText) return [];
+  return catalogText
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line && line.includes('|'))
+    .map(line => {
+      const parts = line.split('|').map(p => p.trim());
+      return parts.length >= 3
+        ? { path: parts[0], type: parts[1], summary: parts[2] }
+        : null;
+    })
+    .filter(Boolean);
+}
+
 function buildWikiUpdatePrompt(entry, person, transcript, existingIndex, existingLog) {
   const personName = person.name || 'Unknown';
   const safeFolder = sanitizeFileName(personName);
