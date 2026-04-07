@@ -6697,56 +6697,114 @@ function _selectTopicPages(transcript, topicEntries) {
     .map(entry => `topics/${entry.path.replace(/^topics\//, '')}`);
 }
 
-function buildWikiUpdatePrompt(entry, person, transcript, existingIndex, existingLog) {
+/**
+ * Build the Claude prompt for a wiki update.
+ * @param {object} entry  — the current modal entry (title, date, platform, etc.)
+ * @param {object} person — the tracked person object
+ * @param {string} transcript — full transcript text
+ * @param {Map<string, string>} pages — map of relativePath → content for all loaded files.
+ *   Keys are relative to the vault subfolder root, e.g.:
+ *     "Karl Friston/_index.md"
+ *     "Karl Friston/index.md"
+ *     "topics/_index.md"
+ *     "topics/predictive-coding.md"
+ *   A value of null means the file does not yet exist.
+ * @returns {{ system: string, user: string }}
+ */
+function buildWikiUpdatePrompt(entry, person, transcript, pages) {
   const personName = person.name || 'Unknown';
   const safeFolder = sanitizeFileName(personName);
   const epDate     = entry.date
     ? new Date(entry.date).toISOString().slice(0, 10)
     : new Date().toISOString().slice(0, 10);
-  const indexPath  = `${safeFolder}/index.md`;
-  const logPath    = `${safeFolder}/log.md`;
 
   const system = `You maintain a personal knowledge wiki about ${personName} in Obsidian markdown.
 
-You manage two files:
-1. **${indexPath}** — A living synthesis page. Not a list of episode summaries — a structured picture of this person's recurring themes, notable positions, key quotes, and significant guests. When you update it, revise and integrate; do not just append new episode summaries.
-2. **${logPath}** — An append-only chronological log. One entry per ingested episode. Each entry starts with ## [YYYY-MM-DD] Episode Title.
+## Wiki structure
 
-When you process a new transcript:
-- Extract: main topics, notable claims or positions, memorable quotes, guests mentioned or interviewed.
-- Update ${indexPath}: integrate new information into existing themes; add new themes only if genuinely new; note any evolution or contradiction with past positions.
-- Append one new entry to ${logPath}: ## [${epDate}] ${(entry.title || 'Untitled').replace(/`/g, "'")} followed by a 2–3 sentence summary and a tags line like > tags: topic1, topic2.
+The wiki uses a predefined taxonomy. All files live under a person folder and a shared topics folder:
 
-Output ONLY the updated file contents using this exact format — no commentary, no markdown code fences around the blocks:
-<wiki_file path="${indexPath}">
-...full updated content...
+  ${safeFolder}/
+    _index.md          ← catalog: one line per page (path | type | one-line summary)
+    index.md           ← living synthesis: recurring themes, key positions, notable quotes
+    log.md             ← append-only ingest log: one ## entry per episode, never rewritten
+    themes/            ← recurring intellectual topics (e.g. themes/free-energy-principle.md)
+    guests/            ← notable people who appear with ${personName} (one page per person)
+    books/             ← books ${personName} wrote or frequently references
+    positions/         ← specific stated views on a defined question (e.g. positions/on-consciousness.md)
+
+  topics/
+    _index.md          ← catalog for cross-person topic pages
+    {topic}.md         ← cross-person synthesis: what multiple tracked people say about a topic
+
+## Rules for each file type
+
+**${safeFolder}/index.md** — Revise and integrate on every update. Never just append. Organise by theme, not by episode. No em dashes. No editorial voice ("interestingly", "deeply"). Encyclopedic, factual tone. Direct quotes from the transcript may carry emotional weight.
+
+**${safeFolder}/log.md** — Append ONE new entry at the bottom. Format:
+  ## [${epDate}] ${(entry.title || 'Untitled').replace(/`/g, "'")}
+  2–3 sentence factual summary of the episode.
+  > tags: topic1, topic2, topic3
+Never rewrite existing log entries.
+
+**${safeFolder}/themes/{topic}.md** — Create when a topic receives ≥2 substantive mentions across the person's episodes AND no page exists yet. One page per recurring intellectual topic. Factual, encyclopedic. Cross-link to topics/{topic}.md if a cross-person page exists.
+
+**${safeFolder}/guests/{name}.md** — Create when a guest appears with ${personName} more than once and there is enough material for ≥3 meaningful sentences. Note the relationship, recurring themes in their conversations, key episodes.
+
+**${safeFolder}/books/{title}.md** — Create for books ${personName} wrote or substantively references. Include: publication context, why ${personName} references it, key ideas as they understand them.
+
+**${safeFolder}/positions/{question}.md** — Create for specific, named positions ${personName} holds on a defined question (e.g. "on consciousness", "on AI risk"). Include the position, its development over time, any contradictions or evolution.
+
+**topics/{topic}.md** — Cross-person synthesis. Update if this episode substantively advances understanding of the topic. Create if: (a) the topic doesn't have a page yet AND (b) the episode covers it well enough to write ≥3 meaningful sentences. Always write from the perspective of synthesising what multiple thinkers say about the topic — not just ${personName}'s view.
+
+## Catalog maintenance (_index.md files)
+
+The catalog format is: one line per page, pipe-separated:
+  path | type | one-line summary
+
+Types: synthesis, log, theme, guest, book, position, topic
+
+Always return an updated ${safeFolder}/_index.md that reflects any pages you created or significantly changed. Return an updated topics/_index.md whenever you create or significantly update a topic page. The catalog must stay in sync with the actual pages.
+
+Important: In topics/_index.md, use bare filenames for paths (e.g., predictive-coding.md), not full paths (e.g., do NOT write topics/predictive-coding.md).
+
+## Output format
+
+Return ONLY <wiki_file> blocks — no commentary, no markdown fences around the blocks:
+
+<wiki_file path="${safeFolder}/_index.md">
+...full updated catalog...
 </wiki_file>
-<wiki_file path="${logPath}">
-...full updated log with new entry appended at the bottom...
-</wiki_file>`;
+<wiki_file path="${safeFolder}/index.md">
+...full updated synthesis...
+</wiki_file>
+<wiki_file path="${safeFolder}/log.md">
+...full log with new entry appended at bottom...
+</wiki_file>
 
-  const userLines = [
+Include a block for every file you update or create. Omit files you did not change.
+If you create a new file that is not yet in the catalog, include an updated _index.md that lists it.`;
+
+  // Build user message
+  const lines = [
     `Episode: ${entry.title || 'Untitled'}`,
     `Date: ${epDate}`,
-    `Platform: ${entry.platform}`,
+    `Platform: ${entry.platform || 'unknown'}`,
     `Person: ${personName}`,
+    '',
   ];
 
-  if (existingIndex) {
-    userLines.push(`\n---\nCurrent ${indexPath}:\n${existingIndex}`);
-  } else {
-    userLines.push(`\n---\nNote: ${indexPath} does not exist yet — create it fresh.`);
+  // Append each loaded page (or a "(not yet created)" notice)
+  for (const [path, content] of pages) {
+    lines.push(`--- ${path} ---`);
+    lines.push(content ?? '(not yet created)');
+    lines.push('');
   }
 
-  if (existingLog) {
-    userLines.push(`\n---\nCurrent ${logPath}:\n${existingLog}`);
-  } else {
-    userLines.push(`\n---\nNote: ${logPath} does not exist yet — create it fresh.`);
-  }
+  lines.push('--- Transcript ---');
+  lines.push(transcript);
 
-  userLines.push(`\n---\nTranscript:\n${transcript}`);
-
-  return { system, user: userLines.join('\n') };
+  return { system, user: lines.join('\n') };
 }
 
 function parseWikiResponse(text) {
