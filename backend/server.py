@@ -562,6 +562,20 @@ def db_search_guests():
     return jsonify({'guests': _db.search_guests(q, path=_db.DB_PATH)})
 
 
+@app.route('/api/db/guests/link', methods=['PATCH'])
+def db_link_guest_to_person():
+    """Link a guest name to a tracked person ID."""
+    data = request.json or {}
+    guest_name = (data.get('guest_name') or '').strip()
+    person_id  = (data.get('person_id')  or '').strip()
+    if not guest_name or not person_id:
+        return jsonify({'error': 'guest_name and person_id are required'}), 400
+    guest_id = _db.link_guest_to_person(guest_name, person_id, path=_db.DB_PATH)
+    if guest_id is None:
+        return jsonify({'error': 'guest not found'}), 404
+    return jsonify({'ok': True, 'guest_id': guest_id})
+
+
 @app.route('/api/db/guests/<int:guest_id>/episodes', methods=['GET'])
 def db_get_guest_episodes(guest_id):
     try:

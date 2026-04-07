@@ -1892,6 +1892,7 @@ const _dbClient = {
   setEpisodeGuests: (episodeId, guests)          => _dbClient._call('PUT',  `/api/db/episodes/${encodeURIComponent(episodeId)}/guests`, { guests }),
   getEpisodeGuests: (episodeId)                  => _dbClient._call('GET',  `/api/db/episodes/${encodeURIComponent(episodeId)}/guests`),
   getGuestEpisodes: (guestId, limit=20)          => _dbClient._call('GET',  `/api/db/guests/${guestId}/episodes?limit=${limit}`),
+  linkGuestToPerson: (guestName, personId)       => _dbClient._call('PATCH', '/api/db/guests/link', { guest_name: guestName, person_id: personId }),
   getCalibreText:   (calibreId)                  => _dbClient._call('GET',  `/api/calibre/text/${encodeURIComponent(calibreId)}`),
   setCalibreLink:   (entryId, personId, calibreId, calibreTitle, formats, contentType) =>
     _dbClient._call('PUT', `/api/db/calibre/${encodeURIComponent(entryId)}`,

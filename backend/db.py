@@ -367,13 +367,29 @@ def get_episode_guests(episode_id: str, path: str = DB_PATH) -> list:
     """Return all guests for a specific episode."""
     with get_db(path) as conn:
         rows = conn.execute("""
-            SELECT g.id, g.name, eg.source
+            SELECT g.id, g.name, g.person_id, eg.source
             FROM episode_guests eg
             JOIN guests g ON g.id = eg.guest_id
             WHERE eg.episode_id = ?
             ORDER BY g.name
         """, (episode_id,)).fetchall()
     return [dict(r) for r in rows]
+
+
+def link_guest_to_person(guest_name: str, person_id: str, path: str = DB_PATH) -> int | None:
+    """
+    Set guests.person_id for the guest matching guest_name (by slug or exact name).
+    Returns guest_id on success, None if guest not found.
+    """
+    slug = name_to_slug(guest_name)
+    with get_db(path) as conn:
+        row = conn.execute(
+            'SELECT id FROM guests WHERE slug = ? OR name = ?', (slug, guest_name)
+        ).fetchone()
+        if not row:
+            return None
+        conn.execute('UPDATE guests SET person_id = ? WHERE id = ?', (person_id, row['id']))
+    return row['id']
 
 
 def search_guests(query: str, path: str = DB_PATH) -> list:
