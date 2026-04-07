@@ -6626,6 +6626,70 @@ function _parseCatalog(catalogText) {
     .filter(Boolean);
 }
 
+/**
+ * Extract a Set of lowercase keyword candidates from a block of text.
+ * Uses two signals:
+ *   1. Words with an initial capital not at a sentence boundary (proper nouns)
+ *   2. Words found inside double-quote pairs (quoted concepts / titles)
+ * @param {string} text
+ * @returns {Set<string>}
+ */
+function _extractWikiKeywords(text) {
+  const keywords = new Set();
+  if (!text) return keywords;
+
+  // Signal 1: proper nouns — capitalised word NOT immediately after . ? ! \n
+  // Simpler heuristic: collect all words with initial cap that are not the
+  // first token on a new sentence. We do this by scanning word-by-word.
+  const sentences = text.split(/[.!?\n]+/);
+  for (const sentence of sentences) {
+    const words = sentence.trim().split(/\s+/);
+    for (let i = 1; i < words.length; i++) {   // skip index 0 = sentence start
+      const w = words[i].replace(/[^A-Za-z'-]/g, '');
+      if (w.length >= 3 && /^[A-Z]/.test(w)) {
+        keywords.add(w.toLowerCase());
+      }
+    }
+  }
+
+  // Signal 2: words inside double quotes
+  const quotedRe = /"([^"]{3,60})"/g;
+  let m;
+  while ((m = quotedRe.exec(text)) !== null) {
+    m[1].split(/\s+/).forEach(w => {
+      const clean = w.replace(/[^A-Za-z'-]/g, '').toLowerCase();
+      if (clean.length >= 3) keywords.add(clean);
+    });
+  }
+
+  return keywords;
+}
+
+/**
+ * Given a transcript and the parsed topics/_index.md catalog, return the
+ * paths (relative to the vault subfolder root) of topic pages whose summary
+ * or path contains at least one keyword from the transcript.
+ * Returns full paths including the "topics/" prefix.
+ * @param {string} transcript
+ * @param {{ path: string, type: string, summary: string }[]} topicEntries — from _parseCatalog
+ * @returns {string[]}  e.g. ['topics/predictive-coding.md', 'topics/consciousness.md']
+ */
+function _selectTopicPages(transcript, topicEntries) {
+  if (!topicEntries.length) return [];
+  const keywords = _extractWikiKeywords(transcript);
+  if (!keywords.size) return [];
+
+  return topicEntries
+    .filter(entry => {
+      const haystack = (entry.path + ' ' + entry.summary).toLowerCase();
+      for (const kw of keywords) {
+        if (haystack.includes(kw)) return true;
+      }
+      return false;
+    })
+    .map(entry => `topics/${entry.path}`);
+}
+
 function buildWikiUpdatePrompt(entry, person, transcript, existingIndex, existingLog) {
   const personName = person.name || 'Unknown';
   const safeFolder = sanitizeFileName(personName);
