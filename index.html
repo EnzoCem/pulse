@@ -7090,7 +7090,7 @@ function _renderBriefSection(markdown) {
       html += `<li style="margin:2px 0;font-size:13px;color:var(--text);line-height:1.5">${_briefInline(trimmed.slice(2))}</li>`;
     } else if (trimmed.startsWith('> ')) {
       if (inList) { html += '</ul>'; inList = false; }
-      html += `<blockquote style="border-left:3px solid var(--accent);margin:6px 0 6px 8px;padding:4px 10px;color:var(--muted);font-style:italic;font-size:13px">${escHtml(trimmed.slice(2))}</blockquote>`;
+      html += `<blockquote style="border-left:3px solid var(--accent);margin:6px 0 6px 8px;padding:4px 10px;color:var(--muted);font-style:italic;font-size:13px">${_briefInline(trimmed.slice(2))}</blockquote>`;
     } else if (/^\d+\./.test(trimmed)) {
       if (inList) { html += '</ul>'; inList = false; }
       html += `<p style="margin:2px 0 2px 16px;font-size:13px;color:var(--text);line-height:1.5">${_briefInline(trimmed.replace(/^\d+\.\s*/, ''))}</p>`;
@@ -7157,7 +7157,12 @@ async function generateEpisodeBrief() {
  */
 async function saveEpisodeBriefToObsidian() {
   const entry = _currentModalEntry;
-  if (!_vaultHandle || !_currentBriefMarkdown || !entry) return;
+  if (!_currentBriefMarkdown || !entry) return;
+  if (!_vaultHandle) {
+    _showToast('Connect an Obsidian vault in ⚙ Settings first', 3500);
+    toggleSettings();
+    return;
+  }
 
   const saveBtn = document.getElementById('briefSaveBtn');
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '📓 Saving…'; }
