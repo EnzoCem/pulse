@@ -6728,10 +6728,13 @@ The wiki uses a predefined taxonomy. All files live under a person folder and a 
     _index.md          ← catalog: one line per page (path | type | one-line summary)
     index.md           ← living synthesis: recurring themes, key positions, notable quotes
     log.md             ← append-only ingest log: one ## entry per episode, never rewritten
-    themes/            ← recurring intellectual topics (e.g. themes/free-energy-principle.md)
+    themes/            ← recurring topics of any kind (intellectual, cultural, geographic, creative, etc.)
     guests/            ← notable people who appear with ${personName} (one page per person)
     books/             ← books ${personName} wrote or frequently references
     positions/         ← specific stated views on a defined question (e.g. positions/on-consciousness.md)
+    studies/           ← academic papers and research cited substantively
+    resources/         ← tools, supplements, products, and protocols endorsed with reasoning
+    misc/              ← catch-all: anything that doesn't fit the above categories
 
   topics/
     _index.md          ← catalog for cross-person topic pages
@@ -6745,15 +6748,22 @@ The wiki uses a predefined taxonomy. All files live under a person folder and a 
   ## [${epDate}] ${(entry.title || 'Untitled').replace(/`/g, "'")}
   2–3 sentence factual summary of the episode.
   > tags: topic1, topic2, topic3
-Never rewrite existing log entries.
+  > studies: Study Title (journal, year) — claim being made; Another Study — claim
+Never rewrite existing log entries. The > studies: line lists ALL studies cited in the episode, even passing mentions (title + the claim being supported). Omit the > studies: line entirely if no studies are cited.
 
-**${safeFolder}/themes/{topic}.md** — Create when a topic receives ≥2 substantive mentions across the person's episodes AND no page exists yet. One page per recurring intellectual topic. Factual, encyclopedic. Cross-link to topics/{topic}.md if a cross-person page exists.
+**${safeFolder}/themes/{topic}.md** — Create when a topic receives ≥2 substantive mentions across the person's episodes AND no page exists yet. One page per recurring topic of any kind — intellectual, cultural, geographic, creative. Examples: themes/ancient-egypt.md, themes/cocktail-culture.md, themes/tango.md. Factual, encyclopedic. Cross-link to topics/{topic}.md if a cross-person page exists.
 
 **${safeFolder}/guests/{name}.md** — Create when a guest appears with ${personName} more than once and there is enough material for ≥3 meaningful sentences. Note the relationship, recurring themes in their conversations, key episodes.
 
 **${safeFolder}/books/{title}.md** — Create for books ${personName} wrote or substantively references. Include: publication context, why ${personName} references it, key ideas as they understand them.
 
 **${safeFolder}/positions/{question}.md** — Create for specific, named positions ${personName} holds on a defined question (e.g. "on consciousness", "on AI risk"). Include the position, its development over time, any contradictions or evolution.
+
+**${safeFolder}/studies/{slug}.md** — The log.md entry lists ALL studies cited (even passing mentions) under > studies:. Create a dedicated page ONLY when the person cites a study substantively: they explain what it found, why it matters, or build an argument on it — enough for 2+ meaningful sentences. Include: paper title, authors (if mentioned), journal (if mentioned), year (if mentioned), the person's stated claim or interpretation, episodes where referenced.
+
+**${safeFolder}/resources/{slug}.md** — Create for tools, supplements, apps, gear, foods, protocols, or any non-book item the person endorses with reasoning: dosing, mechanism, use case, or "why I use this." Passing name-drops without context do not qualify. Books go in books/, not here. Include: what it is, what the person says about it, any caveats or specifics, episodes where referenced.
+
+**${safeFolder}/misc/{slug}.md** — Catch-all for content that genuinely doesn't fit themes/, guests/, books/, positions/, studies/, or resources/. Examples: a travel destination the person references repeatedly (misc/japan.md), a historical figure not appearing as a guest (misc/marcus-aurelius.md). Same substance bar: enough for 2+ meaningful sentences.
 
 **topics/{topic}.md** — Cross-person synthesis. Update if this episode substantively advances understanding of the topic. Create if: (a) the topic doesn't have a page yet AND (b) the episode covers it well enough to write ≥3 meaningful sentences. Always write from the perspective of synthesising what multiple thinkers say about the topic — not just ${personName}'s view.
 
@@ -6762,7 +6772,7 @@ Never rewrite existing log entries.
 The catalog format is: one line per page, pipe-separated:
   path | type | one-line summary
 
-Types: synthesis, log, theme, guest, book, position, topic
+Types: synthesis, log, theme, guest, book, position, study, resource, misc, topic
 
 Always return an updated ${safeFolder}/_index.md that reflects any pages you created or significantly changed. Return an updated topics/_index.md whenever you create or significantly update a topic page. The catalog must stay in sync with the actual pages.
 
@@ -6783,6 +6793,15 @@ Return ONLY <wiki_file> blocks — no commentary, no markdown fences around the 
 </wiki_file>
 <wiki_file path="${safeFolder}/themes/free-energy-principle.md">
 ...theme page content...
+</wiki_file>
+<wiki_file path="${safeFolder}/studies/omega3-bdnf-neuroplasticity.md">
+...study page content...
+</wiki_file>
+<wiki_file path="${safeFolder}/resources/creatine-monohydrate.md">
+...resource page content...
+</wiki_file>
+<wiki_file path="${safeFolder}/misc/ancient-egypt.md">
+...misc page content...
 </wiki_file>
 <wiki_file path="topics/free-energy-principle.md">
 ...cross-person synthesis...
