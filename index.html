@@ -1542,6 +1542,9 @@
         <button class="filter-chip" data-filter="article" onclick="setFilter('article')">
           <span class="chip-dot" style="background:var(--article)"></span>Article
         </button>
+        <button class="filter-chip" data-filter="appearance" onclick="setFilter('appearance')">
+          <span style="font-size:11px;margin-right:3px">🎤</span>Appearances
+        </button>
       </div>
       <div style="position:relative;display:flex;align-items:center">
         <input id="searchInput" type="text"
@@ -3994,6 +3997,11 @@ function renderAllCards() {
       }).filter(Boolean)
     : persons;
 
+  // When appearance filter active, show only persons who have at least one appearance
+  if (currentFilter === 'appearance') {
+    visible = visible.filter(p => (p.appearances||[]).length > 0);
+  }
+
   // Filter grid by person name / description / tags
   if (personQuery) {
     visible = visible.filter(p =>
@@ -4030,8 +4038,12 @@ function renderPersonCard(person, prepend = false, delay = 0) {
   const existing = document.getElementById('card-' + person.id);
   if (existing) existing.remove();
 
-  let entries = person._searchEntries || person._tagEntries || person.entries || [];
-  if (currentFilter !== 'all') entries = entries.filter(e => e.platform === currentFilter);
+  let entries = person._searchEntries || person._tagEntries || _mergeEntriesAndAppearances(person);
+  if (currentFilter === 'appearance') {
+    entries = entries.filter(e => e.isAppearance);
+  } else if (currentFilter !== 'all') {
+    entries = entries.filter(e => !e.isAppearance && e.platform === currentFilter);
+  }
 
   const activePlatforms = Object.entries(person.feeds).filter(([,v]) => v).map(([k]) => k);
   const isSource = person.type === 'source';
@@ -4062,8 +4074,24 @@ function renderPersonCard(person, prepend = false, delay = 0) {
       ${activePlatforms.length === 0 ? 'No feeds configured' : 'No entries yet — click refresh'}
     </div>`;
   } else {
-    entriesHTML = entries.map(entry => {
+    entriesHTML = entries.slice(0, 4).map(entry => {
       const isNew  = !seenIds.has(entry.id);
+      if (entry.isAppearance) {
+        return `
+          <div class="entry-row"
+               data-eid="${escHtml(entry.id)}"
+               onclick="openEntry(${JSON.stringify(entry).replace(/"/g, '&quot;')})">
+            <div class="entry-platform-dot" style="background:var(--accent);opacity:0.65"></div>
+            <div class="entry-content">
+              <div class="entry-title">${escHtml(entry.title)}</div>
+              <div class="entry-meta">
+                <span class="entry-platform-label">🎤 ${escHtml(entry.hostName || 'Guest')}</span>
+                <span class="entry-time">${timeAgo(entry.date)}</span>
+              </div>
+            </div>
+            ${isNew ? '<span class="new-badge">NEW</span>' : ''}
+          </div>`;
+      }
       const pl     = getPlatform(entry, person);
       const eTags  = entryTags[entry.id] || [];
       const eTagsHtml = eTags.map(t => {
