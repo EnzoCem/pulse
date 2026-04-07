@@ -197,12 +197,12 @@ def db_get_person_statuses(person_id):
     return jsonify(_db.get_person_statuses(person_id, path=_db.DB_PATH))
 
 
-@app.route('/api/db/status/<entry_id>', methods=['GET'])
+@app.route('/api/db/status/<path:entry_id>', methods=['GET'])
 def db_get_status(entry_id):
     return jsonify({'status': _db.get_status(entry_id, path=_db.DB_PATH)})
 
 
-@app.route('/api/db/status/<entry_id>', methods=['PUT'])
+@app.route('/api/db/status/<path:entry_id>', methods=['PUT'])
 def db_set_status(entry_id):
     data = request.json or {}
     person_id = (data.get('person_id') or '').strip()
@@ -232,12 +232,12 @@ def db_migrate_notes():
     return jsonify({'migrated': count})
 
 
-@app.route('/api/db/notes/<entry_id>', methods=['GET'])
+@app.route('/api/db/notes/<path:entry_id>', methods=['GET'])
 def db_get_notes(entry_id):
     return jsonify(_db.get_notes(entry_id, path=_db.DB_PATH))
 
 
-@app.route('/api/db/notes/<entry_id>', methods=['PUT'])
+@app.route('/api/db/notes/<path:entry_id>', methods=['PUT'])
 def db_set_notes(entry_id):
     data = request.json or {}
     person_id   = (data.get('person_id') or '').strip()
@@ -259,7 +259,7 @@ def db_get_person_calibre_links(person_id):
     return jsonify(_db.get_person_calibre_links(person_id, path=_db.DB_PATH))
 
 
-@app.route('/api/db/calibre/<entry_id>', methods=['GET'])
+@app.route('/api/db/calibre/<path:entry_id>', methods=['GET'])
 def db_get_calibre_link(entry_id):
     result = _db.get_calibre_link(entry_id, path=_db.DB_PATH)
     if result is None:
@@ -267,7 +267,7 @@ def db_get_calibre_link(entry_id):
     return jsonify(result)
 
 
-@app.route('/api/db/calibre/<entry_id>', methods=['PUT'])
+@app.route('/api/db/calibre/<path:entry_id>', methods=['PUT'])
 def db_set_calibre_link_direct(entry_id):
     """Store a calibre link directly (for pre-existing Calibre books, without pushing content)."""
     import json as _json
@@ -295,7 +295,7 @@ def db_set_calibre_link_direct(entry_id):
     return jsonify({'ok': True})
 
 
-@app.route('/api/db/calibre/<entry_id>', methods=['DELETE'])
+@app.route('/api/db/calibre/<path:entry_id>', methods=['DELETE'])
 def db_remove_calibre_link(entry_id):
     """Remove a Calibre link for an entry."""
     with _db.get_db(_db.DB_PATH) as conn:
@@ -384,7 +384,7 @@ def db_get_episodes(person_id):
                                     db_path=_db.DB_PATH))
 
 
-@app.route('/api/db/episodes/<episode_id>', methods=['DELETE'])
+@app.route('/api/db/episodes/<path:episode_id>', methods=['DELETE'])
 def db_delete_episode(episode_id):
     """Remove an episode record (used when a manually-added article is deleted)."""
     with _db.get_db(_db.DB_PATH) as conn:
@@ -529,13 +529,13 @@ def db_sync_episodes(person_id):
     return jsonify({'synced': len(episodes), 'total': len(episodes)})
 
 
-@app.route('/api/db/episodes/<episode_id>/guests', methods=['GET'])
+@app.route('/api/db/episodes/<path:episode_id>/guests', methods=['GET'])
 def db_get_episode_guests(episode_id):
     """Get all guests for a specific episode."""
     return jsonify({'guests': _db.get_episode_guests(episode_id, path=_db.DB_PATH)})
 
 
-@app.route('/api/db/episodes/<episode_id>/guests', methods=['PUT'])
+@app.route('/api/db/episodes/<path:episode_id>/guests', methods=['PUT'])
 def db_set_episode_guests(episode_id):
     data   = request.json or {}
     guests = data.get('guests', [])
