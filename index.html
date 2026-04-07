@@ -4180,7 +4180,11 @@ function renderTimeline() {
   const tlEmpty   = document.getElementById('tlEmptyState');
 
   let entries = [...allEntries];
-  if (currentFilter !== 'all') entries = entries.filter(e => e.platform === currentFilter);
+  if (currentFilter === 'appearance') {
+    entries = entries.filter(e => e.isAppearance);
+  } else if (currentFilter !== 'all') {
+    entries = entries.filter(e => !e.isAppearance && e.platform === currentFilter);
+  }
   if (activeTag) entries = entries.filter(e =>
     (persons.find(p => p.id === e.personId)?.tags||[]).includes(activeTag) ||
     (entryTags[e.id]||[]).includes(activeTag));
@@ -4210,11 +4214,29 @@ function renderTimeline() {
       <div class="timeline-date-label">${date}</div>
       ${items.map(entry => {
         const person = persons.find(p => p.id === entry.personId) || {};
-        const pl     = getPlatform(entry, person);
         const isNew  = !seenIds.has(entry.id);
         const av     = person.avatar
           ? `<img src="${person.avatar}" alt="" onerror="this.innerHTML='${getInitials(person.name||'?')}'"/>`
           : getInitials(person.name || '?');
+        if (entry.isAppearance) {
+          return `
+            <div class="timeline-item"
+                 data-eid="${escHtml(entry.id)}"
+                 onclick="openEntry(${JSON.stringify(entry).replace(/"/g,'&quot;')})">
+              <div class="tl-platform-bar" style="background:var(--accent);opacity:0.65"></div>
+              <div class="tl-avatar">${av}</div>
+              <div class="tl-body">
+                <div class="tl-who">
+                  <strong>${escHtml(person.name||'Unknown')}</strong>
+                  <span style="color:var(--accent)">🎤 ${escHtml(entry.hostName || 'Guest')}</span>
+                </div>
+                <div class="tl-title">${escHtml(entry.title)}</div>
+                <div class="tl-time">${timeAgo(entry.date)}</div>
+              </div>
+              ${isNew ? '<span class="tl-new-badge">NEW</span>' : ''}
+            </div>`;
+        }
+        const pl = getPlatform(entry, person);
         return `
           <div class="timeline-item"
                data-eid="${escHtml(entry.id)}"
