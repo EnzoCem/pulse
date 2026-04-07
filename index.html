@@ -6995,6 +6995,205 @@ async function updateWikiFromTranscript() {
   }
 }
 
+// ── EPISODE BRIEF ────────────────────────────────────────────────────────
+
+/**
+ * Build the Claude prompt for episode brief extraction.
+ * @param {object} entry  — the current modal entry
+ * @param {object} person — the tracked person object
+ * @param {string} transcript — full transcript text
+ * @returns {{ system: string, user: string }}
+ */
+function buildEpisodeBriefPrompt(entry, person, transcript) {
+  const personName = person.name || 'Unknown';
+  const epDate = entry.date
+    ? new Date(entry.date).toISOString().slice(0, 10)
+    : new Date().toISOString().slice(0, 10);
+
+  const system = `You are extracting a structured reference document from a ${entry.platform || 'podcast'} transcript. Extract exhaustively — err on the side of inclusion rather than omission.
+
+Output ONLY the following 7 sections as markdown with ## headings. Use bullet points within each section. Omit a section only if it genuinely has zero content.
+
+## People Mentioned
+For each person: name, role or affiliation if stated, and brief context of their mention.
+
+## Books Referenced
+For each book: title, author (if stated), and why or how it was mentioned.
+
+## Studies Cited
+For each study: title, journal or publication (if stated), and the specific claim or finding being referenced.
+
+## Products / Supplements / Tools
+For each item: the name, and what the speaker says about it (dosing, recommendation, why they use it).
+
+## Key Concepts & Terminology
+For each concept: the term and a definition as it was used or explained in this episode.
+
+## Notable Quotes
+Direct verbatim quotes only. Format each as:
+> "Quote text here"
+> — Speaker Name
+
+## Episode Structure
+Key topics in order. If timestamps are present in the transcript (format HH:MM:SS or MM:SS), include them. Otherwise list topics sequentially as a numbered list.
+1. [00:00:00] Topic description
+
+No preamble, no closing remarks, no meta-commentary — output only the 7 sections.`;
+
+  const user = [
+    `Episode: ${entry.title || 'Untitled'}`,
+    `Date: ${epDate}`,
+    `Platform: ${entry.platform || 'unknown'}`,
+    `Person: ${personName}`,
+    '',
+    '--- Transcript ---',
+    transcript,
+  ].join('\n');
+
+  return { system, user };
+}
+
+/**
+ * Convert inline markdown (bold only) to safe HTML.
+ * Escapes HTML first, then converts **bold** markers.
+ * @param {string} text
+ * @returns {string}
+ */
+function _briefInline(text) {
+  return escHtml(text).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+}
+
+/**
+ * Render a generated brief markdown string as HTML inside the modal,
+ * below #transcriptArea. Removes any previous #briefSection first.
+ * Appends a "Save to Obsidian" button inside the section.
+ * @param {string} markdown — raw markdown from Claude
+ */
+function _renderBriefSection(markdown) {
+  document.getElementById('briefSection')?.remove();
+
+  const lines = markdown.split('\n');
+  let html = '';
+  let inList = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (inList) { html += '</ul>'; inList = false; }
+      continue;
+    }
+    if (trimmed.startsWith('## ')) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<h3 style="font-family:'JetBrains Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--accent);margin:16px 0 6px 0;padding-bottom:4px;border-bottom:1px solid var(--border)">${escHtml(trimmed.slice(3))}</h3>`;
+    } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      if (!inList) { html += '<ul style="margin:2px 0 4px 16px;padding:0">'; inList = true; }
+      html += `<li style="margin:2px 0;font-size:13px;color:var(--text);line-height:1.5">${_briefInline(trimmed.slice(2))}</li>`;
+    } else if (trimmed.startsWith('> ')) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<blockquote style="border-left:3px solid var(--accent);margin:6px 0 6px 8px;padding:4px 10px;color:var(--muted);font-style:italic;font-size:13px">${escHtml(trimmed.slice(2))}</blockquote>`;
+    } else if (/^\d+\./.test(trimmed)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<p style="margin:2px 0 2px 16px;font-size:13px;color:var(--text);line-height:1.5">${_briefInline(trimmed.replace(/^\d+\.\s*/, ''))}</p>`;
+    } else {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<p style="margin:2px 0;font-size:13px;color:var(--muted);line-height:1.5">${_briefInline(trimmed)}</p>`;
+    }
+  }
+  if (inList) html += '</ul>';
+
+  const section = document.createElement('div');
+  section.id = 'briefSection';
+  section.style.cssText = 'margin-top:16px;padding:12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:6px';
+
+  section.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);text-transform:uppercase;letter-spacing:0.1em">📋 Episode Brief</span>
+      <button id="briefSaveBtn" class="btn btn-ghost" style="font-size:11px;padding:3px 8px" onclick="saveEpisodeBriefToObsidian()">📓 Save to Obsidian</button>
+    </div>
+    <div>${html}</div>`;
+
+  document.getElementById('transcriptArea')?.insertAdjacentElement('afterend', section);
+}
+
+/**
+ * Generate an Episode Brief for the current modal entry.
+ * Requires _currentTranscriptText and pwConfig.anthropicKey.
+ * Renders the result inline in the modal via _renderBriefSection.
+ */
+async function generateEpisodeBrief() {
+  const entry = _currentModalEntry;
+  if (!entry) return;
+
+  if (!pwConfig.anthropicKey) {
+    _showToast('Add your Anthropic API key in ⚙ Settings first', 3500);
+    toggleSettings();
+    return;
+  }
+  if (!_currentTranscriptText) {
+    _showToast('Load a transcript first, then click Episode Brief', 3500);
+    return;
+  }
+
+  const btn = document.getElementById('briefBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '📋 Generating…'; }
+
+  try {
+    const person = persons.find(p => p.id === entry.personId) || {};
+    const { system, user } = buildEpisodeBriefPrompt(entry, person, _currentTranscriptText);
+    const responseText = await callClaude(pwConfig.anthropicKey, system, user, 4096);
+    _currentBriefMarkdown = responseText;
+    _renderBriefSection(responseText);
+    if (btn) { btn.disabled = false; btn.textContent = '📋 Episode Brief'; }
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '📋 Episode Brief'; }
+    _showToast('Brief generation failed: ' + e.message, 5000);
+    console.error('Brief generation error:', e);
+  }
+}
+
+/**
+ * Save the current _currentBriefMarkdown to the Obsidian vault.
+ * Path: {safeFolder}/briefs/{YYYY-MM-DD}-{episode-slug}.md
+ */
+async function saveEpisodeBriefToObsidian() {
+  const entry = _currentModalEntry;
+  if (!_vaultHandle || !_currentBriefMarkdown || !entry) return;
+
+  const saveBtn = document.getElementById('briefSaveBtn');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '📓 Saving…'; }
+
+  if (!await _ensureVaultPermission()) {
+    _showToast('Obsidian vault permission denied — reconnect in ⚙ Settings', 4000);
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '📓 Save to Obsidian'; }
+    return;
+  }
+
+  try {
+    const person     = persons.find(p => p.id === entry.personId) || {};
+    const safeFolder = sanitizeFileName(person.name || entry.personId);
+    const epDate     = entry.date
+      ? new Date(entry.date).toISOString().slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
+    const slug = (entry.title || 'episode')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 50);
+    const path = `${safeFolder}/briefs/${epDate}-${slug}.md`;
+    const ok = await writeObsidianNote(path, _currentBriefMarkdown);
+    if (ok) {
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '📓 Saved ✓'; }
+      _showToast(`✓ Brief saved to ${path}`);
+    } else {
+      throw new Error('writeObsidianNote returned false');
+    }
+  } catch(e) {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '📓 Save to Obsidian'; }
+    _showToast('Failed to save brief: ' + e.message, 5000);
+    console.error('Brief save error:', e);
+  }
+}
+
 async function findGuestsFromTranscript() {
   const btn = document.getElementById('guestAiBtn');
   if (!btn || !_currentTranscriptText || !_currentModalEntry) return;
