@@ -5285,7 +5285,38 @@ function openEntry(entry) {
     if (entry.link) _showOpen(entry.link);
     const _gs = document.getElementById('guestSection');
     if (_gs) _gs.style.display = 'none';
-    // No transcript/wiki buttons for appearances — all buttons already hidden above
+    // Show the same transcript/AI processing buttons as the underlying platform
+    if (entry.platform === 'youtube') {
+      ytBtn.style.display  = '';
+      nbBtn.style.display  = '';
+      aiBtn.style.display  = '';
+      obsBtn.style.display = '';
+      wikiBtn.style.display  = '';
+      briefBtn.style.display = '';
+    } else if (entry.platform === 'podcast') {
+      if (entry.transcriptUrl) {
+        tBtn.href        = entry.transcriptUrl;
+        tBtn.textContent = '📄 Transcript';
+        tBtn.title       = 'Open episode transcript (provided by the podcast RSS feed)';
+        tBtn.style.display = '';
+      } else {
+        const showName = entry.hostName ? `"${entry.hostName}"` : (person.name ? `"${person.name}"` : '');
+        const epTitle  = `"${entry.title}"`;
+        const epDate   = entry.date
+          ? new Date(entry.date).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+          : '';
+        const query    = [showName, epTitle, epDate, 'transcript'].filter(Boolean).join(' ');
+        tBtn.href        = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+        tBtn.textContent = '🔍 Find Transcript';
+        tBtn.title       = `Search: ${query}`;
+        tBtn.style.display = '';
+      }
+      nbBtn.style.display  = '';
+      aiBtn.style.display  = '';
+      obsBtn.style.display = '';
+      wikiBtn.style.display  = '';
+      briefBtn.style.display = '';
+    }
   } else if (entry.platform === 'youtube') {
     // YouTube: inline transcript via captions API
     ytBtn.style.display = '';
