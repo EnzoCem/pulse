@@ -6763,7 +6763,7 @@ Never rewrite existing log entries. The > studies: line lists ALL studies cited 
 
 **${safeFolder}/resources/{slug}.md** — Create for tools, supplements, apps, gear, foods, protocols, or any non-book item the person endorses with reasoning: dosing, mechanism, use case, or "why I use this." Passing name-drops without context do not qualify. Books go in books/, not here. Include: what it is, what the person says about it, any caveats or specifics, episodes where referenced.
 
-**${safeFolder}/misc/{slug}.md** — Catch-all for content that genuinely doesn't fit themes/, guests/, books/, positions/, studies/, or resources/. Examples: a travel destination the person references repeatedly (misc/japan.md), a historical figure not appearing as a guest (misc/marcus-aurelius.md). Same substance bar: enough for 2+ meaningful sentences.
+**${safeFolder}/misc/{slug}.md** — Catch-all for content that genuinely doesn't fit themes/, guests/, books/, positions/, studies/, or resources/. Examples: an institution the person is affiliated with (misc/santa-fe-institute.md), a specific life event they reference repeatedly (misc/2019-sabbatical.md), a person they cite frequently but who never appears as a guest and is primarily referenced as a biographical figure rather than a topical theme (misc/richard-feynman.md). Same substance bar: enough for 2+ meaningful sentences.
 
 **topics/{topic}.md** — Cross-person synthesis. Update if this episode substantively advances understanding of the topic. Create if: (a) the topic doesn't have a page yet AND (b) the episode covers it well enough to write ≥3 meaningful sentences. Always write from the perspective of synthesising what multiple thinkers say about the topic — not just ${personName}'s view.
 
@@ -6789,7 +6789,7 @@ Return ONLY <wiki_file> blocks — no commentary, no markdown fences around the 
 ...full updated synthesis...
 </wiki_file>
 <wiki_file path="${safeFolder}/log.md">
-...full log with new entry appended at bottom...
+...full log with new entry appended at bottom (include > studies: line only if studies were cited)...
 </wiki_file>
 <wiki_file path="${safeFolder}/themes/free-energy-principle.md">
 ...theme page content...
@@ -6800,7 +6800,7 @@ Return ONLY <wiki_file> blocks — no commentary, no markdown fences around the 
 <wiki_file path="${safeFolder}/resources/creatine-monohydrate.md">
 ...resource page content...
 </wiki_file>
-<wiki_file path="${safeFolder}/misc/ancient-egypt.md">
+<wiki_file path="${safeFolder}/misc/santa-fe-institute.md">
 ...misc page content...
 </wiki_file>
 <wiki_file path="topics/free-energy-principle.md">
