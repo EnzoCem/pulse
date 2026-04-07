@@ -89,6 +89,24 @@ Pulse/
 }
 ```
 
+### Appearance (inside person.appearances)
+```js
+{
+  id:           string,              // "personId-appearance-<8-char hash>"
+  isAppearance: true,                // distinguishes from Entry — always true
+  personId:     string,              // the tracked person who appeared as guest
+  platform:     'podcast'|'youtube'|'article'|'other',
+  title:        string,              // episode title
+  link:         string,              // URL to episode
+  desc:         string,              // episode description
+  date:         string,              // ISO 8601
+  hostName:     string,              // name of the show/host (e.g. "Lex Fridman Podcast")
+  hostPersonId: string|undefined,    // personId of host if they are also tracked in Pulse
+}
+```
+
+Appearances are stored in `person.appearances[]` (separate from `person.entries[]`). They are merged for display via `_mergeEntriesAndAppearances(person)` which tags each entry with `isAppearance: true/false`.
+
 ### localStorage keys
 ```
 'pw-persons'     → Person[]                persons list
@@ -148,6 +166,12 @@ Pulse/
 | `parseWikiResponse(text)` | Extract `<wiki_file path="...">` blocks from Claude response into `{ path: content }` map |
 | `updateWikiFromTranscript()` | Orchestrate full wiki update: read existing → call Claude → parse → write to Obsidian |
 | `_refreshWikiBtn()` | Enable/disable `#wikiBtn` based on whether `_currentTranscriptText` is set |
+| `buildEpisodeBriefPrompt(entry, person, transcript)` | Build Claude `{ system, user }` for episode brief extraction (7-section structured reference doc) |
+| `generateEpisodeBrief()` | Orchestrate brief generation: guards → `callClaude(4096)` → `_renderBriefSection` |
+| `_renderBriefSection(markdown)` | Convert 7-section markdown to HTML, insert below `#transcriptArea`, add Save button |
+| `_refreshBriefBtn()` | Enable/disable `#briefBtn` based on `_currentTranscriptText` (mirrors `_refreshWikiBtn`) |
+| `saveEpisodeBriefToObsidian()` | Write `_currentBriefMarkdown` to `{safeFolder}/briefs/{date}-{slug}.md` in vault |
+| `_mergeEntriesAndAppearances(person)` | Merge `person.entries` and `person.appearances` into a single sorted array; tags each with `isAppearance: true/false` |
 
 ---
 
@@ -156,20 +180,28 @@ Pulse/
 Pulse can maintain a compounding personal knowledge wiki in Obsidian for each tracked person. The wiki is written by Claude and grows richer with every episode ingested.
 
 **How it works:**
-1. Open a YouTube or podcast entry modal
-2. Load a transcript (YouTube: "📄 Load Transcript"; podcast: find transcript via the transcript link)
-3. Once transcript is loaded, **🧠 Update Wiki** button becomes active
-4. Clicking it reads existing wiki files for that person, calls Claude API with the transcript + existing state, and writes back two files:
-   - `{Obsidian subfolder}/{Person Name}/_index.md` — catalog of all wiki pages for this person (`path | type | summary`)
-   - `{Obsidian subfolder}/{Person Name}/index.md` — living synthesis: themes, positions, key quotes, guests
-   - `{Obsidian subfolder}/{Person Name}/log.md` — append-only ingest log (`## [YYYY-MM-DD] Episode Title`)
-   - `{Obsidian subfolder}/{Person Name}/themes/`, `guests/`, `books/`, `positions/` — per-topic pages created on demand
-   - `{Obsidian subfolder}/topics/` — cross-person synthesis pages + catalog
-5. Each subsequent episode integrates into the existing synthesis rather than replacing it
+1. Open a YouTube, podcast, or guest appearance entry modal
+2. Load a transcript (YouTube: "📄 Load Transcript"; podcast: find/load transcript)
+3. Once transcript is loaded, **🧠 Update Wiki** and **📋 Episode Brief** buttons become active
 
-**Requirements:** Anthropic API key in Settings + Obsidian vault connected in Settings.
+**Update Wiki** — reads existing wiki files for that person, calls Claude API, writes back:
+- `{safeFolder}/_index.md` — catalog of all wiki pages (`path | type | summary`)
+- `{safeFolder}/index.md` — living synthesis (themes, positions, key quotes, guests)
+- `{safeFolder}/log.md` — append-only ingest log; lists ALL cited studies under `> studies:` tag
+- `{safeFolder}/themes/` — recurring topics of any kind (intellectual, cultural, geographic, creative)
+- `{safeFolder}/guests/` — notable guests and collaborators
+- `{safeFolder}/books/` — books written or referenced
+- `{safeFolder}/positions/` — specific stated views on named questions
+- `{safeFolder}/studies/` — academic papers cited substantively (2+ meaningful sentences)
+- `{safeFolder}/resources/` — tools, supplements, products endorsed with reasoning
+- `{safeFolder}/misc/` — catch-all for anything that doesn't fit the above categories
+- `topics/` — cross-person synthesis pages + catalog
 
-**The wiki button:** Only shown for YouTube and podcast entries (not blog/twitter, where `_currentTranscriptText` is never populated). Starts disabled on modal open; enabled by `_refreshWikiBtn()` once transcript loads.
+**Episode Brief** — separate Claude call (4096 tokens) that extracts a structured per-episode reference document (like a "Selected Links" PDF) with 7 sections: People Mentioned, Books Referenced, Studies Cited, Products/Supplements/Tools, Key Concepts & Terminology, Notable Quotes, Episode Structure. Renders inline in the modal. Optional "Save to Obsidian" writes to `{safeFolder}/briefs/{date}-{slug}.md`.
+
+**Requirements:** Anthropic API key in Settings + Obsidian vault connected in Settings (vault required for save operations only).
+
+**Button visibility:** Update Wiki and Episode Brief shown for YouTube, podcast, and guest appearance entries. Starts disabled; enabled by `_refreshWikiBtn()` / `_refreshBriefBtn()` once transcript loads.
 
 **Path safety:** `updateWikiFromTranscript` validates Claude's returned file paths with a prefix check: only paths under `{safeFolder}/` or `topics/` are written. Paths with `..` or starting with `/` are also rejected. Warnings are logged for rejected paths.
 
@@ -297,10 +329,32 @@ The frontend checks `_backendOnline` (set by `_checkBackend()` on page load) and
 8. **Mobile PWA** — Service worker + manifest for home screen install
 
 ### Completed features (recent)
-- ✅ **LLM Wiki** — "🧠 Update Wiki" button in entry modal; calls Claude API with loaded transcript to maintain a compounding per-person Obsidian wiki (`index.md` synthesis + `log.md` ingest log)
+- ✅ **Wiki taxonomy expansion** — added `studies/`, `resources/`, `misc/` folders; broadened `themes/` to any recurring topic; `log.md` now lists all cited studies under `> studies:` tag
+- ✅ **Episode Brief** — `📋 Episode Brief` button extracts a 7-section structured reference doc from a transcript (people, books, studies, products, concepts, quotes, structure); renders inline in modal, optionally saved to `{safeFolder}/briefs/`
+- ✅ **Guest Appearances** — `APPEARANCES` filter shows all people; appearance modals show same transcript/AI processing buttons as podcast/youtube (Load Transcript, NotebookLM, AI Notes, Obsidian, Update Wiki, Episode Brief)
+- ✅ **LLM Wiki v2** — multi-file taxonomy with `_index.md` catalog, cross-person `topics/` pages, keyword-based topic page selection to avoid token overload
+- ✅ **LLM Wiki v1** — "🧠 Update Wiki" button in entry modal; calls Claude API with loaded transcript to maintain a compounding per-person Obsidian wiki
 - ✅ **DB architecture Phase 1** — SQLite enrichment layer (status, notes, Calibre links, episode archive, guest graph, library view)
 - ✅ **Library tab** — paginated view of all tracked content with status/platform/guest filters
 - ✅ **All Episodes** — full episode archive per person with sync from RSS + iTunes
+
+---
+
+## Guest Appearances
+
+Appearances track episodes where a person appeared as a **guest** on someone else's show — separate from their own feed entries.
+
+**Data:** Stored in `person.appearances[]` (not `person.entries[]`). Each appearance has `isAppearance: true`, a `hostName`, and optionally a `hostPersonId` if the host is also tracked in Pulse.
+
+**APPEARANCES filter:** Shows all tracked people (same as other platform filters). Cards show only `isAppearance` entries. People with no appearances yet show "No entries yet."
+
+**Platform filters (PODCAST, YOUTUBE, etc.):** Appearances are deliberately excluded from platform filters — they show only feed-sourced content. Appearances are only visible under ALL and APPEARANCES.
+
+**Modal buttons:** Appearance modals show the same processing buttons as the underlying platform:
+- YouTube appearance → Load Transcript, NotebookLM, AI Notes, Obsidian, Update Wiki, Episode Brief
+- Podcast appearance → Find/Load Transcript (using `entry.hostName` for Google search query), NotebookLM, AI Notes, Obsidian, Update Wiki, Episode Brief
+
+**Adding appearances:** Via the person detail panel → "Guest Appearances" section → `openAppearanceFinder(personId)`. Supports AI-assisted search and manual URL paste.
 
 ---
 
