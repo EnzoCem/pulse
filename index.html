@@ -6838,7 +6838,7 @@ async function updateWikiFromTranscript() {
     return;
   }
   if (!_vaultHandle) {
-    _showToast('No Obsidian vault selected — pick one in ⚙ Settings', 3500);
+    _showToast('No Obsidian vault connected — pick one in ⚙ Settings', 3500);
     toggleSettings();
     return;
   }
@@ -6848,7 +6848,7 @@ async function updateWikiFromTranscript() {
   }
 
   const btn = document.getElementById('wikiBtn');
-  if (btn) { btn.disabled = true; btn.textContent = '🧠 Reading wiki…'; }
+  if (btn) { btn.disabled = true; btn.textContent = '🧠 Reading catalog…'; }
 
   if (!await _ensureVaultPermission()) {
     _showToast('Obsidian vault permission denied — reconnect in ⚙ Settings', 4000);
@@ -6858,38 +6858,89 @@ async function updateWikiFromTranscript() {
 
   try {
     const safeFolder = sanitizeFileName(person.name || entry.personId);
-    const [existingIndex, existingLog] = await Promise.all([
-      readObsidianNote(`${safeFolder}/index.md`),
-      readObsidianNote(`${safeFolder}/log.md`),
+
+    // ── Step 1: Read both catalogs ──────────────────────────────────────────
+    const [personCatalogText, topicsCatalogText] = await Promise.all([
+      readObsidianNote(`${safeFolder}/_index.md`),
+      readObsidianNote('topics/_index.md'),
     ]);
+
+    const personEntries = _parseCatalog(personCatalogText);
+    const topicsEntries = _parseCatalog(topicsCatalogText);
+
+    // ── Step 2: Determine which pages to load ──────────────────────────────
+    // Person pages: everything listed in the catalog, or fallback to the
+    // two legacy files when no catalog exists yet.
+    const personPagePaths = personEntries.length
+      ? personEntries.map(e => `${safeFolder}/${e.path}`)
+      : [`${safeFolder}/index.md`, `${safeFolder}/log.md`];
+
+    // Topic pages: keyword-filtered from the topics catalog
+    const selectedTopicPaths = _selectTopicPages(_currentTranscriptText, topicsEntries);
+
+    if (btn) btn.textContent = '🧠 Loading pages…';
+
+    // ── Step 3: Read all pages in parallel ─────────────────────────────────
+    // Always include the catalog files so Claude can update them
+    const catalogPaths = [
+      `${safeFolder}/_index.md`,
+      'topics/_index.md',
+    ];
+    const pathsToRead = [...new Set([...catalogPaths, ...personPagePaths, ...selectedTopicPaths])];
+
+    const contents = await Promise.all(pathsToRead.map(p => readObsidianNote(p)));
+
+    // Build the pages Map — catalogs first so they appear at the top of the prompt
+    const pages = new Map();
+    pages.set(`${safeFolder}/_index.md`, personCatalogText);
+    pages.set('topics/_index.md', topicsCatalogText);
+    pathsToRead.forEach((path) => {
+      if (!pages.has(path)) pages.set(path, contents[pathsToRead.indexOf(path)]);
+    });
 
     if (btn) btn.textContent = '🧠 Calling Claude…';
 
+    // ── Step 4: Single Claude call ─────────────────────────────────────────
     const { system, user } = buildWikiUpdatePrompt(
-      entry, person, _currentTranscriptText, existingIndex, existingLog
+      entry, person, _currentTranscriptText, pages
     );
-    const responseText = await callClaude(pwConfig.anthropicKey, system, user, 4096);
+    const responseText = await callClaude(pwConfig.anthropicKey, system, user, 8192);
 
-    const pages = parseWikiResponse(responseText);
-    if (Object.keys(pages).length === 0) {
+    // ── Step 5: Parse + validate + write ───────────────────────────────────
+    const returnedPages = parseWikiResponse(responseText);
+    if (Object.keys(returnedPages).length === 0) {
       throw new Error('Claude returned no wiki files — unexpected response format');
     }
 
     if (btn) btn.textContent = '🧠 Writing…';
-    const expectedPaths = new Set([`${safeFolder}/index.md`, `${safeFolder}/log.md`]);
+
+    // Path guard: only allow files under {safeFolder}/ or topics/
     let written = 0;
-    for (const [path, content] of Object.entries(pages)) {
-      if (!expectedPaths.has(path)) continue;
+    for (const [path, content] of Object.entries(returnedPages)) {
+      const allowed = path.startsWith(safeFolder + '/') || path.startsWith('topics/');
+      if (!allowed) {
+        console.warn('Wiki: rejected path outside allowed directories:', path);
+        continue;
+      }
+      // Extra safety: reject path traversal attempts
+      if (path.includes('..') || path.startsWith('/')) {
+        console.warn('Wiki: rejected unsafe path:', path);
+        continue;
+      }
       const ok = await writeObsidianNote(path, content);
       if (ok) written++;
     }
 
-    if (btn) { btn.disabled = false; btn.textContent = '🧠 Wiki ✓'; }
+    if (btn) {
+      btn.disabled  = false;
+      btn.textContent = `🧠 Wiki ✓ (${written} file${written !== 1 ? 's' : ''})`;
+    }
     _showToast(`✓ Wiki updated — ${written} file${written !== 1 ? 's' : ''} written to Obsidian`);
 
   } catch(e) {
     if (btn) { btn.disabled = false; btn.textContent = '🧠 Update Wiki'; }
     _showToast('Wiki update failed: ' + e.message, 5000);
+    console.error('Wiki update error:', e);
   }
 }
 
