@@ -6930,11 +6930,16 @@ async function updateWikiFromTranscript() {
       if (ok) written++;
     }
 
-    if (btn) {
-      btn.disabled  = false;
-      btn.textContent = `🧠 Wiki ✓ (${written} file${written !== 1 ? 's' : ''})`;
+    if (written === 0) {
+      if (btn) { btn.disabled = false; btn.textContent = '🧠 Update Wiki'; }
+      _showToast('Wiki: Claude responded but no files were written — all paths rejected by path guard', 5000);
+    } else {
+      if (btn) {
+        btn.disabled  = false;
+        btn.textContent = `🧠 Wiki ✓ (${written} file${written !== 1 ? 's' : ''})`;
+      }
+      _showToast(`✓ Wiki updated — ${written} file${written !== 1 ? 's' : ''} written to Obsidian`);
     }
-    _showToast(`✓ Wiki updated — ${written} file${written !== 1 ? 's' : ''} written to Obsidian`);
 
   } catch(e) {
     if (btn) { btn.disabled = false; btn.textContent = '🧠 Update Wiki'; }

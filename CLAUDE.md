@@ -144,7 +144,7 @@ Pulse/
 | `callClaude(apiKey, systemPrompt, userContent, maxTokens)` | Call Claude API (claude-sonnet-4-6); `maxTokens` optional, defaults to 1024 |
 | `readObsidianNote(relativePath)` | Read a file from the connected Obsidian vault; returns `null` if missing or permission denied |
 | `writeObsidianNote(relativePath, content)` | Write markdown to vault subfolder, creating directories as needed |
-| `buildWikiUpdatePrompt(entry, person, transcript, existingIndex, existingLog)` | Build Claude `{ system, user }` messages for wiki maintenance; handles fresh vs existing wiki |
+| `buildWikiUpdatePrompt(entry, person, transcript, pages)` | Build Claude `{ system, user }` messages for wiki maintenance; `pages` is a `Map<relativePath, content\|null>` of all loaded wiki files |
 | `parseWikiResponse(text)` | Extract `<wiki_file path="...">` blocks from Claude response into `{ path: content }` map |
 | `updateWikiFromTranscript()` | Orchestrate full wiki update: read existing → call Claude → parse → write to Obsidian |
 | `_refreshWikiBtn()` | Enable/disable `#wikiBtn` based on whether `_currentTranscriptText` is set |
@@ -160,15 +160,18 @@ Pulse can maintain a compounding personal knowledge wiki in Obsidian for each tr
 2. Load a transcript (YouTube: "📄 Load Transcript"; podcast: find transcript via the transcript link)
 3. Once transcript is loaded, **🧠 Update Wiki** button becomes active
 4. Clicking it reads existing wiki files for that person, calls Claude API with the transcript + existing state, and writes back two files:
+   - `{Obsidian subfolder}/{Person Name}/_index.md` — catalog of all wiki pages for this person (`path | type | summary`)
    - `{Obsidian subfolder}/{Person Name}/index.md` — living synthesis: themes, positions, key quotes, guests
    - `{Obsidian subfolder}/{Person Name}/log.md` — append-only ingest log (`## [YYYY-MM-DD] Episode Title`)
+   - `{Obsidian subfolder}/{Person Name}/themes/`, `guests/`, `books/`, `positions/` — per-topic pages created on demand
+   - `{Obsidian subfolder}/topics/` — cross-person synthesis pages + catalog
 5. Each subsequent episode integrates into the existing synthesis rather than replacing it
 
 **Requirements:** Anthropic API key in Settings + Obsidian vault connected in Settings.
 
 **The wiki button:** Only shown for YouTube and podcast entries (not blog/twitter, where `_currentTranscriptText` is never populated). Starts disabled on modal open; enabled by `_refreshWikiBtn()` once transcript loads.
 
-**Path safety:** `updateWikiFromTranscript` validates Claude's returned file paths against an `expectedPaths` Set (`{safeFolder}/index.md` and `{safeFolder}/log.md`) before writing — unexpected paths are silently skipped.
+**Path safety:** `updateWikiFromTranscript` validates Claude's returned file paths with a prefix check: only paths under `{safeFolder}/` or `topics/` are written. Paths with `..` or starting with `/` are also rejected. Warnings are logged for rejected paths.
 
 ---
 
