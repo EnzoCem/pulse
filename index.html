@@ -2855,12 +2855,20 @@ function renderPersonDetail() {
   }).join('');
 
   // Entry list with current detail filter
-  let entries = [...(person.entries || [])];
-  if (_detailFilter !== 'all') entries = entries.filter(e => e.platform === _detailFilter);
+  let entries = _detailFilter === 'appearance'
+    ? []   // appearances shown in their own section, not here
+    : [...(person.entries || [])];
+  if (_detailFilter !== 'all' && _detailFilter !== 'appearance')
+    entries = entries.filter(e => e.platform === _detailFilter);
   entries.sort((a, b) => new Date(b.date) - new Date(a.date));
 
   const hasArticles = (person.entries || []).some(e => e.platform === 'article');
-  const filterBtns = ['all', 'podcast', 'youtube', 'twitter', 'blog', 'article'].map(f => {
+  const filterBtns = ['all', 'podcast', 'youtube', 'twitter', 'blog', 'article', 'appearance'].map(f => {
+    if (f === 'appearance') {
+      if (!(currentPerson.appearances||[]).length) return '';
+      const active = _detailFilter === 'appearance';
+      return `<button class="filter-chip${active?' active':''}" onclick="setDetailFilter('appearance')">🎤 Appearances</button>`;
+    }
     if (f !== 'all' && f !== 'article' && !person.feeds[f]) return '';
     if (f === 'article' && !hasArticles) return '';
     const active = _detailFilter === f;
@@ -2979,7 +2987,7 @@ function renderPersonDetail() {
     <div class="detail-entries">
       <div class="detail-section-title">
         Content
-        <span style="color:var(--muted);font-weight:400;margin-left:6px">(${person.entries?.length || 0} entries)</span>
+        <span style="color:var(--muted);font-weight:400;margin-left:6px">(${(person.entries?.length||0) + (person.appearances?.length||0)} items)</span>
         <button class="card-refresh-btn" style="margin-left:10px" id="detail-refresh-btn"
           onclick="refreshDetailPerson()" data-tip="Refresh feeds">↻</button>
         <button class="btn btn-ghost" style="margin-left:8px;font-size:10px;padding:3px 8px;color:var(--article);border-color:var(--article)"
@@ -3022,6 +3030,26 @@ function renderPersonDetail() {
     wrap.appendChild(epSection);
     loadEpisodeArchive(currentPerson, false);
   }
+
+  // Find Appearances section
+  const apSection = document.createElement('div');
+  apSection.id = 'appearance-finder-section';
+  apSection.style.cssText = 'margin-top:32px';
+  apSection.innerHTML = `
+    <div class="detail-section-title" style="display:flex;align-items:center;gap:10px">
+      Guest Appearances
+      <span style="color:var(--muted);font-weight:400;font-size:10px">(${(currentPerson.appearances||[]).length} saved)</span>
+      <button onclick="openAppearanceFinder('${person.id}')"
+        class="btn btn-ghost"
+        style="font-size:10px;padding:3px 10px;margin-left:auto">
+        🔍 Find Appearances
+      </button>
+    </div>
+    <div id="appearance-finder-panel" style="display:none;margin-top:12px;padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px"></div>
+    <div id="appearance-saved-list" style="margin-top:10px"></div>`;
+  wrap.appendChild(apSection);
+  _appearanceFinderOpen = false;
+  _renderSavedAppearances(person.id);
 }
 
 function previewDetailAvatar(url) {
@@ -5452,6 +5480,297 @@ function _makeAppearanceId(personId, link) {
 
 let _appearanceFinderOpen = false;
 let _appearanceCandidates = [];
+
+// ── Task 7: Find Appearances panel ──
+
+function openAppearanceFinder(personId) {
+  const panel = document.getElementById('appearance-finder-panel');
+  if (!panel) return;
+  _appearanceFinderOpen = !_appearanceFinderOpen;
+  if (!_appearanceFinderOpen) {
+    panel.style.display = 'none';
+    return;
+  }
+  const name = currentPerson?.name || '';
+  panel.style.display = '';
+  panel.innerHTML = `
+    <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:10px;letter-spacing:.05em">SEARCH PODCASTS</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <input id="ap-search-input" type="text"
+        value="${escHtml(name)}"
+        placeholder="Search name…"
+        style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 8px"
+        onkeydown="if(event.key==='Enter')searchAppearances('${escHtml(personId)}')">
+      <button onclick="searchAppearances('${escHtml(personId)}')"
+        class="btn btn-primary" style="font-size:11px;padding:5px 12px">Search</button>
+    </div>
+    <div id="ap-candidate-list"></div>
+    <div style="margin-top:10px">
+      <a href="https://www.youtube.com/results?search_query=${encodeURIComponent(name + ' interview')}"
+         target="_blank" rel="noopener"
+         style="font-size:10px;color:var(--accent2);font-family:'JetBrains Mono',monospace;text-decoration:none">
+        🔍 Search YouTube ↗
+      </a>
+    </div>
+    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:8px;letter-spacing:.05em">OR PASTE A URL (YouTube, podcast, article)</div>
+      <div style="display:flex;gap:8px">
+        <input id="ap-url-input" type="text" placeholder="https://…"
+          style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 8px"
+          onkeydown="if(event.key==='Enter')addAppearanceFromUrl('${escHtml(personId)}')">
+        <button onclick="addAppearanceFromUrl('${escHtml(personId)}')"
+          class="btn btn-ghost" style="font-size:11px;padding:5px 12px">Add</button>
+      </div>
+      <div id="ap-url-status" style="font-size:11px;color:var(--muted);margin-top:6px;font-family:'JetBrains Mono',monospace"></div>
+    </div>`;
+}
+
+// ── Task 8: iTunes search + candidate rendering ──
+
+async function searchAppearances(personId) {
+  const input = document.getElementById('ap-search-input');
+  const listEl = document.getElementById('ap-candidate-list');
+  if (!input || !listEl) return;
+
+  const query = input.value.trim();
+  if (!query) return;
+
+  listEl.innerHTML = '<div style="color:var(--muted);font-size:11px;font-family:\'JetBrains Mono\',monospace">Searching iTunes…</div>';
+  _appearanceCandidates = [];
+
+  try {
+    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=podcast&entity=podcastEpisode&limit=20`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`iTunes returned ${resp.status}`);
+    const data = await resp.json();
+    const results = data.results || [];
+
+    const person = persons.find(p => p.id === personId);
+    const savedLinks = new Set((person?.appearances || []).map(a => a.link));
+
+    _appearanceCandidates = results
+      .filter(r => r.episodeUrl && !savedLinks.has(r.episodeUrl))
+      .map(r => ({
+        title:    r.trackName     || 'Untitled',
+        hostName: r.collectionName || '',
+        link:     r.episodeUrl,
+        desc:     (r.description  || '').slice(0, 300),
+        date:     r.releaseDate   || '',
+        platform: 'podcast',
+        addedHow: 'search',
+      }));
+
+    _renderAppearanceCandidates(personId, listEl);
+  } catch (err) {
+    listEl.innerHTML = `<div style="color:var(--youtube);font-size:11px;font-family:'JetBrains Mono',monospace">Search failed: ${escHtml(err.message)}</div>`;
+  }
+}
+
+function _renderAppearanceCandidates(personId, listEl) {
+  if (!_appearanceCandidates.length) {
+    listEl.innerHTML = '<div style="color:var(--muted);font-size:11px;font-family:\'JetBrains Mono\',monospace;padding:8px 0">No new results found.</div>';
+    return;
+  }
+  listEl.innerHTML = _appearanceCandidates.map((c, i) => `
+    <div id="ap-cand-${i}" style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;color:var(--text);font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(c.title)}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">
+          🎙 ${escHtml(c.hostName)} · ${c.date ? new Date(c.date).toLocaleDateString('en-US',{month:'short',year:'numeric'}) : ''}
+        </div>
+        ${c.desc ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escHtml(c.desc)}</div>` : ''}
+      </div>
+      <div style="display:flex;gap:4px;flex-shrink:0">
+        <button onclick="approveAppearance('${escHtml(personId)}', ${i})"
+          style="background:var(--accent);border:none;border-radius:4px;color:#000;font-family:'JetBrains Mono',monospace;font-size:10px;padding:3px 8px;cursor:pointer">✓ Add</button>
+        <button onclick="skipAppearanceCandidate(${i})"
+          style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:10px;padding:3px 8px;cursor:pointer">✗</button>
+      </div>
+    </div>`).join('');
+}
+
+function skipAppearanceCandidate(idx) {
+  const el = document.getElementById(`ap-cand-${idx}`);
+  if (el) el.remove();
+}
+
+// ── Task 9: approveAppearance, _renderSavedAppearances, removeAppearance ──
+
+async function approveAppearance(personId, idx) {
+  const candidate = _appearanceCandidates[idx];
+  if (!candidate) return;
+
+  const person = persons.find(p => p.id === personId);
+  if (!person) return;
+
+  const hostPersonId = _resolveHostPersonId(candidate.hostName);
+  const appearance = {
+    id:           _makeAppearanceId(personId, candidate.link),
+    isAppearance: true,
+    personId,
+    platform:     candidate.platform || 'podcast',
+    title:        candidate.title,
+    link:         candidate.link,
+    desc:         candidate.desc  || '',
+    date:         candidate.date  || '',
+    hostName:     candidate.hostName || '',
+    hostPersonId: hostPersonId,
+    episodeId:    null,
+    addedHow:     candidate.addedHow || 'search',
+  };
+
+  // Deduplication guard
+  if ((person.appearances || []).some(a => a.link === appearance.link)) {
+    skipAppearanceCandidate(idx);
+    return;
+  }
+
+  person.appearances = [...(person.appearances || []), appearance];
+  saveState();
+  rebuildAllEntries();
+  renderPersonCard(person, false);
+  _renderSavedAppearances(personId);
+  skipAppearanceCandidate(idx);
+
+  // Update count label in panel header
+  const countEl = document.querySelector('#appearance-finder-section .detail-section-title span');
+  if (countEl) countEl.textContent = `(${person.appearances.length} saved)`;
+
+  // Link guest in SQLite if host is tracked and backend is online
+  if (hostPersonId && _backendOnline && candidate.hostName) {
+    _dbClient.linkGuestToPerson(candidate.hostName, personId).catch(() => {});
+  }
+}
+
+function _renderSavedAppearances(personId) {
+  const listEl = document.getElementById('appearance-saved-list');
+  if (!listEl) return;
+  const person = persons.find(p => p.id === personId);
+  const appearances = person?.appearances || [];
+  if (!appearances.length) {
+    listEl.innerHTML = '<div style="color:var(--muted);font-size:11px;font-family:\'JetBrains Mono\',monospace;padding:8px 0">No appearances saved yet.</div>';
+    return;
+  }
+  listEl.innerHTML = appearances
+    .slice().sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+    .map(a => `
+      <div class="detail-entry-row"
+           data-eid="${escHtml(a.id)}"
+           onclick="openEntry(${JSON.stringify(a).replace(/"/g,'&quot;')})">
+        <div class="detail-entry-dot" style="background:var(--accent);opacity:0.65"></div>
+        <div class="detail-entry-body">
+          <div class="detail-entry-title">${escHtml(a.title)}</div>
+          <div class="detail-entry-meta">
+            <span>🎤 ${escHtml(a.hostName || 'Guest')}</span>
+            <span>${a.date ? timeAgo(a.date) : ''}</span>
+          </div>
+        </div>
+        <button onclick="event.stopPropagation();removeAppearance('${escHtml(personId)}','${escHtml(a.id)}')"
+          title="Remove this appearance"
+          style="flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;padding:2px 4px;line-height:1;opacity:0;transition:opacity .15s"
+          class="detail-entry-delete">✕</button>
+      </div>`).join('');
+}
+
+function removeAppearance(personId, appearanceId) {
+  const person = persons.find(p => p.id === personId);
+  if (!person) return;
+  person.appearances = (person.appearances || []).filter(a => a.id !== appearanceId);
+  saveState();
+  rebuildAllEntries();
+  renderPersonCard(person, false);
+  _renderSavedAppearances(personId);
+  const countEl = document.querySelector('#appearance-finder-section .detail-section-title span');
+  if (countEl) countEl.textContent = `(${person.appearances.length} saved)`;
+}
+
+// ── Task 10: Manual URL paste ──
+
+function _extractYouTubeId(url) {
+  if (!url) return null;
+  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/|v\/))([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+async function _resolveAppearanceUrl(url) {
+  if (!url || !url.startsWith('http')) return null;
+
+  const ytId = _extractYouTubeId(url);
+  if (ytId) {
+    const canonical = `https://www.youtube.com/watch?v=${ytId}`;
+    try {
+      const resp = await fetch(
+        `https://www.youtube.com/oembed?url=${encodeURIComponent(canonical)}&format=json`
+      );
+      if (resp.ok) {
+        const d = await resp.json();
+        return { title: d.title || canonical, date: '', platform: 'youtube',
+                 hostName: d.author_name || '', desc: '', link: canonical };
+      }
+    } catch (e) { /* fall through */ }
+    return { title: url, date: '', platform: 'youtube', hostName: '', desc: '', link: canonical };
+  }
+
+  return { title: url, date: '', platform: 'other', hostName: '', desc: '', link: url };
+}
+
+async function addAppearanceFromUrl(personId) {
+  const input    = document.getElementById('ap-url-input');
+  const statusEl = document.getElementById('ap-url-status');
+  if (!input || !statusEl) return;
+
+  const raw = input.value.trim();
+  if (!raw) return;
+
+  statusEl.textContent = 'Resolving…';
+
+  const resolved = await _resolveAppearanceUrl(raw);
+  if (!resolved) {
+    statusEl.textContent = 'Could not resolve URL.';
+    return;
+  }
+
+  const person = persons.find(p => p.id === personId);
+  if (!person) return;
+
+  if ((person.appearances || []).some(a => a.link === resolved.link)) {
+    statusEl.textContent = 'Already saved.';
+    return;
+  }
+
+  const hostPersonId = _resolveHostPersonId(resolved.hostName);
+  const appearance = {
+    id:           _makeAppearanceId(personId, resolved.link),
+    isAppearance: true,
+    personId,
+    platform:     resolved.platform,
+    title:        resolved.title,
+    link:         resolved.link,
+    desc:         resolved.desc || '',
+    date:         resolved.date || '',
+    hostName:     resolved.hostName || '',
+    hostPersonId,
+    episodeId:    null,
+    addedHow:     'manual',
+  };
+
+  person.appearances = [...(person.appearances || []), appearance];
+  saveState();
+  rebuildAllEntries();
+  renderPersonCard(person, false);
+  _renderSavedAppearances(personId);
+
+  const countEl = document.querySelector('#appearance-finder-section .detail-section-title span');
+  if (countEl) countEl.textContent = `(${person.appearances.length} saved)`;
+
+  input.value = '';
+  statusEl.textContent = `Added: ${resolved.title.slice(0, 60)}`;
+  setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+
+  if (hostPersonId && _backendOnline && resolved.hostName) {
+    _dbClient.linkGuestToPerson(resolved.hostName, personId).catch(() => {});
+  }
+}
 
 // ── MODAL GUESTS ──────────────────────────────────────────────────────────
 let _modalGuests = [];    // [{id, name, source}] — working copy for current modal
