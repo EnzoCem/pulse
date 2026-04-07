@@ -4983,7 +4983,10 @@ function renderLibraryList() {
 
     if (item.link) {
       row.style.cursor = 'pointer';
-      row.addEventListener('click', () => window.open(item.link, '_blank', 'noopener'));
+      const targetUrl = item.calibre_id && pwConfig.calibreUrl
+        ? `${pwConfig.calibreUrl}/browse/book/${item.calibre_id}`
+        : item.link;
+      row.addEventListener('click', () => window.open(targetUrl, '_blank', 'noopener'));
     }
 
     row.appendChild(dot);
