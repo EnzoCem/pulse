@@ -6656,6 +6656,13 @@ function _extractWikiKeywords(text) {
   const quotedRe = /"([^"]{3,60})"/g;
   let m;
   while ((m = quotedRe.exec(text)) !== null) {
+    const phrase = m[1].toLowerCase().trim();
+    // Add the phrase as a whole (space-separated) for summary matching
+    if (phrase.length >= 3) keywords.add(phrase);
+    // Add hyphenated form so quoted phrases match file paths like free-energy-principle.md
+    const hyphenated = phrase.replace(/\s+/g, '-');
+    if (hyphenated !== phrase) keywords.add(hyphenated);
+    // Also add individual words for broader matching
     m[1].split(/\s+/).forEach(w => {
       const clean = w.replace(/[^A-Za-z'-]/g, '').toLowerCase();
       if (clean.length >= 3) keywords.add(clean);
@@ -6687,7 +6694,7 @@ function _selectTopicPages(transcript, topicEntries) {
       }
       return false;
     })
-    .map(entry => `topics/${entry.path}`);
+    .map(entry => `topics/${entry.path.replace(/^topics\//, '')}`);
 }
 
 function buildWikiUpdatePrompt(entry, person, transcript, existingIndex, existingLog) {
