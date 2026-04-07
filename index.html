@@ -5488,6 +5488,11 @@ function _renderGuestList() {
     return `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:3px 8px;font-size:12px;font-family:'JetBrains Mono',monospace">
       ${isAI ? '<span title="Auto-extracted — please verify" style="color:var(--accent);font-size:10px">⚠</span>' : ''}
       <span style="color:var(--text)">${escHtml(g.name)}</span>
+      ${g.person_id
+        ? `<button onclick="closeModal();openPersonDetail('${escHtml(g.person_id)}')" title="Open ${escHtml(g.name)}'s profile"
+             style="background:none;border:none;cursor:pointer;color:var(--accent2);font-size:11px;padding:0 2px;line-height:1;font-family:'JetBrains Mono',monospace">→</button>`
+        : ''
+      }
       <button onclick="_trackGuestAsPerson(${i})" title="${alreadyTracked ? 'Already tracking' : 'Track this person'}"
         style="background:none;border:none;cursor:${alreadyTracked ? 'default' : 'pointer'};color:${alreadyTracked ? 'var(--blog)' : 'var(--muted)'};font-size:11px;padding:0 2px;line-height:1"
         ${alreadyTracked ? 'disabled' : ''}
