@@ -18,9 +18,10 @@ Two complementary features that close the gap between what Pulse captures and wh
 
 ### Motivation
 
-The existing taxonomy (`index.md`, `log.md`, `themes/`, `guests/`, `books/`, `positions/`) covers recurring intellectual themes and people well but has no structure for:
+The existing taxonomy (`index.md`, `log.md`, `themes/`, `guests/`, `books/`, `positions/`) covers recurring themes and people well but has no structure for:
 - Academic studies a person cites as evidence
 - Non-book resources (supplements, tools, apps, gear) a person endorses
+- Content that doesn't fit any specific category (travel, culture, recipes, historical references, etc.)
 
 ### `studies/` folder
 
@@ -56,16 +57,53 @@ The existing taxonomy (`index.md`, `log.md`, `themes/`, `guests/`, `books/`, `po
 
 **File naming:** Slugified from item name, e.g. `resources/creatine-monohydrate.md`, `resources/eight-sleep.md`
 
+### `themes/` folder (broadened)
+
+The existing `themes/` folder is redefined from "recurring intellectual topics" to **"recurring topics of any kind"**. This makes it the natural home for any domain the person returns to repeatedly — history, travel, food, culture, philosophy, science, sport — regardless of whether it's strictly academic or intellectual.
+
+Examples: `themes/ancient-egypt.md`, `themes/cocktail-culture.md`, `themes/tango.md`, `themes/high-altitude-training.md` all qualify if the person discusses them across multiple episodes.
+
+### `misc/` folder (new catch-all)
+
+**Purpose:** Anything that genuinely doesn't fit `themes/`, `guests/`, `books/`, `positions/`, `studies/`, or `resources/`. Prevents Claude from either inventing arbitrary new top-level folders or force-fitting content into the wrong category.
+
+**Creation threshold:** Same substance bar as other folders — enough material for 2+ meaningful sentences. One-off mentions that don't fit elsewhere go in `log.md` only.
+
+**Examples:** A one-off travel destination that becomes a recurring reference (`misc/japan.md`), a cultural movement the person references frequently (`misc/stoicism-in-practice.md` if not fitting `themes/`), a person who isn't a guest but is frequently cited (`misc/marcus-aurelius.md`).
+
+**File naming:** Slugified from topic name, e.g. `misc/ancient-rome.md`, `misc/fermented-foods.md`
+
 ### Implementation
 
 This is a **prompt-only change** to `buildWikiUpdatePrompt`. The updated system prompt:
-- Adds `studies/` and `resources/` to the wiki structure description
-- Adds creation rules for each under "Rules for each file type"
+- Adds `studies/`, `resources/`, and `misc/` to the wiki structure description
+- Broadens `themes/` description from "recurring intellectual topics" to "recurring topics of any kind"
+- Adds creation rules for each new folder under "Rules for each file type"
 - Specifies that `log.md` entries list all cited studies (even passing mentions) under a `> studies:` tag
-- Updates the output format example to include paths like `{safeFolder}/studies/omega3-bdnf.md` and `{safeFolder}/resources/creatine.md`
-- Updates the `_index.md` catalog type list to include `study` and `resource` types
+- Updates the output format example to include paths like `{safeFolder}/studies/omega3-bdnf.md`, `{safeFolder}/resources/creatine.md`, and `{safeFolder}/misc/ancient-egypt.md`
+- Updates the `_index.md` catalog type list to include `study`, `resource`, and `misc` types
 
 The `updateWikiFromTranscript` orchestration, `_index.md` catalog mechanics, and path guard (`path.startsWith(safeFolder + '/')`) all handle new folders automatically — no orchestration changes needed.
+
+**Complete taxonomy after this change:**
+
+```
+{safeFolder}/
+  _index.md        ← catalog
+  index.md         ← living synthesis
+  log.md           ← append-only ingest log
+  themes/          ← recurring topics of any kind (intellectual, cultural, geographic, etc.)
+  guests/          ← notable guests
+  books/           ← books written or referenced
+  positions/       ← specific stated views on named questions
+  studies/         ← academic papers cited substantively (new)
+  resources/       ← tools, supplements, products endorsed with reasoning (new)
+  misc/            ← anything that doesn't fit the above categories (new)
+
+topics/
+  _index.md        ← cross-person catalog
+  {topic}.md       ← cross-person synthesis
+```
 
 ---
 
