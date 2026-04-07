@@ -5284,6 +5284,7 @@ function openEntry(entry) {
 
   // Reset transcript text for this modal session
   _currentTranscriptText = '';
+  _currentBriefMarkdown  = null;
 
   if (entry.isAppearance) {
     if (entry.link) _showOpen(entry.link);
@@ -6276,7 +6277,8 @@ function closeModal(e) {
     _modalGuests = [];
     document.getElementById('modalOverlay').classList.remove('open');
     _currentModalEntry = null;
-    _currentBriefMarkdown = null;
+    _currentBriefMarkdown  = null;
+    _currentTranscriptText = '';
   }
 }
 
