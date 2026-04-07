@@ -35,7 +35,7 @@ _db.init_db()
 def add_cors_headers(response):
     response.headers['Access-Control-Allow-Origin'] = '*'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
-    response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
+    response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,PATCH,OPTIONS'
     return response
 
 @app.route('/', defaults={'path': ''}, methods=['OPTIONS'])
@@ -44,7 +44,7 @@ def handle_options(path):
     response = make_response()
     response.headers['Access-Control-Allow-Origin'] = '*'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
-    response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
+    response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,PATCH,OPTIONS'
     return response
 
 # ── Root ───────────────────────────────────────────────────────────────────────
@@ -560,6 +560,20 @@ def db_search_guests():
     if not q:
         return jsonify({'guests': []})
     return jsonify({'guests': _db.search_guests(q, path=_db.DB_PATH)})
+
+
+@app.route('/api/db/guests/link', methods=['PATCH'])
+def db_link_guest_to_person():
+    """Link a guest name to a tracked person ID."""
+    data = request.json or {}
+    guest_name = (data.get('guest_name') or '').strip()
+    person_id  = (data.get('person_id')  or '').strip()
+    if not guest_name or not person_id:
+        return jsonify({'error': 'guest_name and person_id are required'}), 400
+    guest_id = _db.link_guest_to_person(guest_name, person_id, path=_db.DB_PATH)
+    if guest_id is None:
+        return jsonify({'error': 'guest not found'}), 404
+    return jsonify({'ok': True, 'guest_id': guest_id})
 
 
 @app.route('/api/db/guests/<int:guest_id>/episodes', methods=['GET'])
