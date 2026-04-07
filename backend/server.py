@@ -653,8 +653,11 @@ def db_sync_episodes(person_id):
                     _db.set_episode_guests(ep['id'],
                                            [{'name': g, 'source': 'ai_extracted'} for g in guests],
                                            path=_db.DB_PATH)
+        db_total = conn.execute(
+            'SELECT COUNT(*) FROM episodes WHERE person_id = ?', (person_id,)
+        ).fetchone()[0]
 
-    return jsonify({'synced': len(episodes), 'total': len(episodes)})
+    return jsonify({'synced': len(episodes), 'total': db_total, 'stored': db_total})
 
 
 @app.route('/api/db/episodes/<path:episode_id>/guests', methods=['GET'])

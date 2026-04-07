@@ -5072,7 +5072,7 @@ async function syncEpisodeArchive(person) {
   if (btn) {
     btn.disabled = false;
     btn.textContent = result
-      ? `⟳ Sync (${result.synced} fetched)`
+      ? `⟳ Sync (${result.stored ?? result.synced} stored)`
       : '⟳ Sync failed';
   }
   await loadEpisodeArchive(person, false);
