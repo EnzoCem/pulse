@@ -5248,7 +5248,8 @@ function openEntry(entry) {
 
   if (entry.isAppearance) {
     if (entry.link) _showOpen(entry.link);
-    if (guestSection) guestSection.style.display = 'none';
+    const _gs = document.getElementById('guestSection');
+    if (_gs) _gs.style.display = 'none';
     // No transcript/wiki buttons for appearances — all buttons already hidden above
   } else if (entry.platform === 'youtube') {
     // YouTube: inline transcript via captions API
