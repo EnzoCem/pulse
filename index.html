@@ -2208,6 +2208,12 @@ function handleTagEditorKeydown(e, personId) {
     if (val && !(_editTagState[personId]||[]).includes(val)) {
       (_editTagState[personId] = _editTagState[personId] || []).push(val);
       refreshEditChips(personId);
+    } else if (val) {
+      // Flash the existing chip to show it's already there
+      const chips = document.querySelectorAll(`#tec-${personId} .tag-chip`);
+      chips.forEach(c => { if (c.textContent.trim().startsWith(val)) {
+        c.style.outline = '2px solid #e84a4a'; setTimeout(() => c.style.outline = '', 600);
+      }});
     }
     input.value = '';
   } else if (e.key === 'Backspace' && !input.value && _editTagState[personId]?.length) {
