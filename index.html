@@ -4422,11 +4422,14 @@ async function _fetchPersonCore(person) {
   // Keep books separate — they have old publication dates and would be pushed out
   // by the 20-entry cap if podcast + YouTube fill all slots with newer dates.
   // deduplicateEntries returns newest-first; slice keeps the 20 newest.
+  // Preserve manually-added article entries — they are never returned by RSS feeds.
+  const existingArticles = (person.entries || []).filter(e => e.platform === 'article');
   const bookEntries  = newEntries.filter(e => e.platform === 'books');
   const otherEntries = newEntries.filter(e => e.platform !== 'books');
   person.entries = [
     ...deduplicateEntries(otherEntries).slice(0, 20),
     ...bookEntries.slice(0, 15),
+    ...existingArticles,
   ];
   person.lastUpdated = new Date().toISOString();
   person.fetchErrors = failedFeeds;
