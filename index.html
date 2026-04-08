@@ -24,6 +24,7 @@
     --substack:  #e84aaa;
     --books:     #c084fc;
     --article:   #f0a050;  /* amber — manually curated content */
+    --magazine:  #4ac8c8;  /* teal — magazine issues */
     --radius:    6px;
   }
 
@@ -822,7 +823,8 @@
   .lib-platform-podcast { border-color: var(--podcast); color: var(--podcast); background: rgba(232,116,74,.08); }
   .lib-platform-youtube { border-color: var(--youtube); color: var(--youtube); background: rgba(232,74,74,.08); }
   .lib-platform-blog    { border-color: var(--blog);    color: var(--blog);    background: rgba(160,232,74,.08); }
-  .lib-platform-article { border-color: var(--article); color: var(--article); background: rgba(240,160,80,.08); }
+  .lib-platform-article  { border-color: var(--article);  color: var(--article);  background: rgba(240,160,80,.08); }
+  .lib-platform-magazine { border-color: var(--magazine); color: var(--magazine); background: rgba(74,200,200,.08); }
   .lib-calibre-chip     { border-color: var(--books);   color: var(--books);   background: rgba(192,132,252,.08); }
 
   .lib-row {
@@ -1549,6 +1551,9 @@
         <button class="filter-chip" data-filter="article" onclick="setFilter('article')">
           <span class="chip-dot" style="background:var(--article)"></span>Article
         </button>
+        <button class="filter-chip" data-filter="magazine" onclick="setFilter('magazine')">
+          <span class="chip-dot" style="background:var(--magazine)"></span>Magazine
+        </button>
         <button class="filter-chip" data-filter="appearance" onclick="setFilter('appearance')">
           <span style="font-size:11px;margin-right:3px">🎤</span>Appearances
         </button>
@@ -1612,7 +1617,10 @@
   <!-- ADD ARTICLE MODAL -->
   <div id="addArticleOverlay" style="display:none;position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.7);align-items:center;justify-content:center">
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:24px;width:440px;max-width:calc(100vw - 32px);box-shadow:0 8px 32px rgba(0,0,0,.5)">
-      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:16px">ADD ARTICLE</div>
+      <div style="display:flex;gap:6px;margin-bottom:16px">
+        <button id="aa-type-article" class="btn btn-primary" style="flex:1;font-size:11px" onclick="_aaSetType('article')">📝 Article</button>
+        <button id="aa-type-magazine" class="btn btn-ghost" style="flex:1;font-size:11px" onclick="_aaSetType('magazine')">📰 Magazine</button>
+      </div>
 
       <div style="margin-bottom:12px">
         <div style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-bottom:4px">TITLE *</div>
@@ -1646,7 +1654,7 @@
 
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
         <button class="btn btn-ghost" onclick="_closeAddArticleModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveArticle()">✓ Add Article</button>
+        <button class="btn btn-primary" id="aa-save-btn" onclick="saveArticle()">✓ Add Article</button>
       </div>
     </div>
   </div>
@@ -1725,7 +1733,8 @@ const PLATFORMS = {
   twitter: { label: 'X',       color: 'var(--twitter)', emoji: '𝕏' },
   blog:    { label: 'Blog',    color: 'var(--blog)',    emoji: '✍' },
   books:   { label: 'Books',   color: 'var(--books)',   emoji: '📚' },
-  article: { label: 'Article', color: 'var(--article)', emoji: '📝' },
+  article:  { label: 'Article',  color: 'var(--article)',  emoji: '📝' },
+  magazine: { label: 'Magazine', color: 'var(--magazine)', emoji: '📰' },
 };
 
 function getPlatform(entry, person) {
@@ -2893,15 +2902,17 @@ function renderPersonDetail() {
     entries = entries.filter(e => e.platform === _detailFilter);
   entries.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  const hasArticles = (person.entries || []).some(e => e.platform === 'article');
-  const filterBtns = ['all', 'podcast', 'youtube', 'twitter', 'blog', 'article', 'appearance'].map(f => {
+  const hasArticles  = (person.entries || []).some(e => e.platform === 'article');
+  const hasMagazines = (person.entries || []).some(e => e.platform === 'magazine');
+  const filterBtns = ['all', 'podcast', 'youtube', 'twitter', 'blog', 'article', 'magazine', 'appearance'].map(f => {
     if (f === 'appearance') {
       if (!(currentPerson.appearances||[]).length) return '';
       const active = _detailFilter === 'appearance';
       return `<button class="filter-chip${active?' active':''}" onclick="setDetailFilter('appearance')">🎤 Appearances</button>`;
     }
-    if (f !== 'all' && f !== 'article' && !person.feeds[f]) return '';
-    if (f === 'article' && !hasArticles) return '';
+    if (f !== 'all' && f !== 'article' && f !== 'magazine' && !person.feeds[f]) return '';
+    if (f === 'article'  && !hasArticles)  return '';
+    if (f === 'magazine' && !hasMagazines) return '';
     const active = _detailFilter === f;
     const pl = f === 'all' ? null : PLATFORMS[f];
     const dot = pl ? `<span style="width:7px;height:7px;border-radius:50%;background:${pl.color};display:inline-block;margin-right:4px"></span>` : '';
@@ -2917,7 +2928,7 @@ function renderPersonDetail() {
           return `<span class="tag-chip" style="background:${c}22;color:${c};font-size:9px;padding:1px 5px">${escHtml(t)}</span>`;
         }).join('');
         const isNew = !seenIds.has(entry.id);
-        const deleteBtn = entry.platform === 'article'
+        const deleteBtn = (entry.platform === 'article' || entry.platform === 'magazine')
           ? `<button onclick="event.stopPropagation();deleteArticleEntry('${escHtml(person.id)}','${escHtml(entry.id)}')"
                title="Remove this article"
                style="flex-shrink:0;background:none;border:none;cursor:pointer;
@@ -3012,7 +3023,7 @@ function renderPersonDetail() {
         <button class="card-refresh-btn" style="margin-left:10px" id="detail-refresh-btn"
           onclick="refreshDetailPerson()" data-tip="Refresh feeds">↻</button>
         <button class="btn btn-ghost" style="margin-left:8px;font-size:10px;padding:3px 8px;color:var(--article);border-color:var(--article)"
-          onclick="openAddArticleModal('${person.id}')">+ Add Article</button>
+          onclick="openAddArticleModal('${person.id}')">+ Add Article / Magazine</button>
       </div>
       <div class="detail-entry-filter">${filterBtns}</div>
       <div id="detail-entry-list">${entryListHtml}</div>
@@ -4423,7 +4434,7 @@ async function _fetchPersonCore(person) {
   // by the 20-entry cap if podcast + YouTube fill all slots with newer dates.
   // deduplicateEntries returns newest-first; slice keeps the 20 newest.
   // Preserve manually-added article entries — they are never returned by RSS feeds.
-  const existingArticles = (person.entries || []).filter(e => e.platform === 'article');
+  const existingArticles = (person.entries || []).filter(e => e.platform === 'article' || e.platform === 'magazine');
   const bookEntries  = newEntries.filter(e => e.platform === 'books');
   const otherEntries = newEntries.filter(e => e.platform !== 'books');
   person.entries = [
@@ -5282,8 +5293,8 @@ function openEntry(entry) {
     elOpen.style.pointerEvents = 'none';
     elOpen.style.display = '';
   }
-  // Override Open button label for Calibre articles
-  if (entry.platform === 'article' && entry.link && entry.link.includes('/browse/book/')) {
+  // Override Open button label for Calibre articles/magazines
+  if ((entry.platform === 'article' || entry.platform === 'magazine') && entry.link && entry.link.includes('/browse/book/')) {
     elOpen.textContent = '📚 Open in Calibre';
   }
   // render any existing tags for this entry
@@ -5422,22 +5433,22 @@ function openEntry(entry) {
     nbBtn.style.display  = '';   // NotebookLM — copies article URL (web source)
     aiBtn.style.display  = '';   // AI Notes — fetches article text
     obsBtn.style.display = '';   // Obsidian
-  } else if (entry.platform === 'article') {
-    // Sync to SQLite so the article appears in the Library tab (localStorage-only entries are missed otherwise)
+  } else if (entry.platform === 'article' || entry.platform === 'magazine') {
+    // Sync to SQLite so the entry appears in the Library tab (localStorage-only entries are missed otherwise)
     if (_backendOnline) {
       const _ap = persons.find(p => p.id === entry.personId);
       _dbClient.upsertEpisodes([{
         id:          entry.id,
         person_id:   entry.personId,
         person_name: _ap?.name || '',
-        platform:    'article',
+        platform:    entry.platform,
         title:       entry.title,
         link:        entry.link,
         description: entry.desc || '',
         date:        entry.date || null,
       }]).catch(() => {});
     }
-    // Manual article — web URL or Calibre PDF
+    // Manual article/magazine — web URL or Calibre PDF
     const isCalibreArticle = entry.link && entry.link.includes('/browse/book/');
     if (isCalibreArticle) {
       if (_backendOnline) {
@@ -5479,8 +5490,8 @@ function openEntry(entry) {
 
   // → Calibre push button for non-book entries (youtube, podcast, blog, web articles)
   // Exclude Calibre article entries — they're already in Calibre, push button is meaningless
-  const isCalibreEntry = entry.platform === 'article' && entry.link?.includes('/browse/book/');
-  if (['youtube', 'podcast', 'blog', 'article'].includes(entry.platform) && _backendOnline && !isCalibreEntry && !entry.isAppearance) {
+  const isCalibreEntry = (entry.platform === 'article' || entry.platform === 'magazine') && entry.link?.includes('/browse/book/');
+  if (['youtube', 'podcast', 'blog', 'article', 'magazine'].includes(entry.platform) && _backendOnline && !isCalibreEntry && !entry.isAppearance) {
     // Check if already pushed to Calibre; if not, show push button
     _dbClient.getCalibreLink(entry.id).then(link => {
       const transcriptArea = document.getElementById('transcriptArea');
@@ -6261,7 +6272,7 @@ const getText    = (el, tag) => { const n = el.querySelector(tag); return n ? (n
 const cleanText  = str => str.replace(/<[^>]*>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/\s+/g,' ').trim();
 const escHtml    = str => String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const getInitials = name => name.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
-const hexAlpha   = p => ({ podcast:'#2a1510', youtube:'#2a1010', twitter:'#101a2a', blog:'#141f10', books:'#1a1030', article:'#2a1a10' }[p]||'#1a1a22');
+const hexAlpha   = p => ({ podcast:'#2a1510', youtube:'#2a1010', twitter:'#101a2a', blog:'#141f10', books:'#1a1030', article:'#2a1a10', magazine:'#102a2a' }[p]||'#1a1a22');
 
 // Returns false if the URL is obviously a social-media profile page rather than an RSS/Atom feed.
 // Used to skip bad twitter field values silently rather than counting them as fetch failures.
@@ -7560,7 +7571,7 @@ async function generateAINotes() {
     aiArea.style.display = '';
   }
 
-  const isArticle = entry.platform === 'blog' || entry.platform === 'twitter' || entry.platform === 'article';
+  const isArticle = entry.platform === 'blog' || entry.platform === 'twitter' || entry.platform === 'article' || entry.platform === 'magazine';
 
   try {
     const person   = persons.find(p => p.id === entry.personId) || {};
@@ -8241,10 +8252,12 @@ function _openBookCalibreLinker(entry, triggerBtn) {
 
 let _aaPersonId    = null;
 let _aaCalibreBook = null;
+let _aaType        = 'article'; // 'article' | 'magazine'
 
 function openAddArticleModal(personId) {
   _aaPersonId    = personId;
   _aaCalibreBook = null;
+  _aaSetType('article');
 
   const overlay = document.getElementById('addArticleOverlay');
   document.getElementById('aa-title').value = '';
@@ -8261,6 +8274,16 @@ function _closeAddArticleModal() {
   document.getElementById('addArticleOverlay').style.display = 'none';
   _aaPersonId    = null;
   _aaCalibreBook = null;
+}
+
+function _aaSetType(type) {
+  _aaType = type;
+  const artBtn  = document.getElementById('aa-type-article');
+  const magBtn  = document.getElementById('aa-type-magazine');
+  const saveBtn = document.getElementById('aa-save-btn');
+  if (artBtn)  artBtn.className  = type === 'article'  ? 'btn btn-primary' : 'btn btn-ghost';
+  if (magBtn)  magBtn.className  = type === 'magazine' ? 'btn btn-primary' : 'btn btn-ghost';
+  if (saveBtn) saveBtn.textContent = type === 'magazine' ? '✓ Add Magazine' : '✓ Add Article';
 }
 
 function _aaSetSource(src) {
@@ -8285,8 +8308,9 @@ function _aaSetSource(src) {
       _aaCalibreBook = book;
       const titleEl = document.getElementById('aa-title');
       if (!titleEl.value.trim()) titleEl.value = book.title;
+      const typeColor = _aaType === 'magazine' ? 'var(--magazine)' : 'var(--article)';
       calArea.innerHTML = `
-        <div style="padding:6px 10px;background:var(--surface2);border:1px solid var(--article);border-radius:4px;font-size:12px">
+        <div style="padding:6px 10px;background:var(--surface2);border:1px solid ${typeColor};border-radius:4px;font-size:12px">
           📚 <strong>${escHtml(book.title)}</strong>
           <span style="color:var(--muted);font-size:10px;margin-left:6px">${escHtml(book.authors)}</span>
           <button class="btn btn-ghost" style="margin-left:8px;font-size:10px;padding:2px 6px" onclick="_aaSetSource('calibre')">Change</button>
@@ -8308,7 +8332,8 @@ function saveArticle() {
   if (!title) { errEl.textContent = 'Title is required'; errEl.style.display = ''; return; }
 
   const isCalibre = !!_aaCalibreBook;
-  if (!isCalibre && !url) { errEl.textContent = 'URL is required for web articles'; errEl.style.display = ''; return; }
+  const typeLabel = _aaType === 'magazine' ? 'magazine' : 'article';
+  if (!isCalibre && !url) { errEl.textContent = `URL is required for web ${typeLabel}s`; errEl.style.display = ''; return; }
 
   let link;
   if (isCalibre) {
@@ -8318,11 +8343,11 @@ function saveArticle() {
     link = url;
   }
 
-  const entryId = `${person.id}-article-${link}`.slice(0, 80);
+  const entryId = `${person.id}-${typeLabel}-${link}`.slice(0, 80);
   const entry   = {
     id:           entryId,
     personId:     person.id,
-    platform:     'article',
+    platform:     typeLabel,
     title,
     link,
     desc:         '',
@@ -8339,16 +8364,16 @@ function saveArticle() {
 
   if (isCalibre && _backendOnline) {
     _dbClient.setCalibreLink(entryId, person.id, _aaCalibreBook.bookId,
-      _aaCalibreBook.title, _aaCalibreBook.formats, 'article').catch(() => {});
+      _aaCalibreBook.title, _aaCalibreBook.formats, typeLabel).catch(() => {});
   }
 
-  // Sync to SQLite so the article appears in the Library tab
+  // Sync to SQLite so the entry appears in the Library tab
   if (_backendOnline) {
     _dbClient.upsertEpisodes([{
       id:          entryId,
       person_id:   person.id,
       person_name: person.name,
-      platform:    'article',
+      platform:    typeLabel,
       title,
       link,
       description: '',
