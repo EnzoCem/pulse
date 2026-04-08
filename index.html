@@ -1738,6 +1738,7 @@ const CORS_PRIMARY   = 'https://corsproxy.io/?';
 const CORS_FALLBACK  = 'https://api.allorigins.win/raw?url=';
 const CORS_FALLBACK2 = 'https://api.codetabs.com/v1/proxy?quest=';
 const FEED_TTL_MS = 6 * 60 * 60 * 1000  // 6 hours — background refresh threshold
+const STARTUP_CONCURRENCY = 5           // max simultaneous person fetches on startup
 
 // ── SHARED UTILITIES (from Main Rules/utilities/js/) ─────────────────────────
 
@@ -4484,6 +4485,52 @@ function ensureFresh(person) {
     person.backgroundRefreshing = false
     renderPersonCard(person, false)
   })
+}
+
+// Concurrency-limited startup refresh.
+// Runs at most STARTUP_CONCURRENCY person fetches simultaneously.
+// Never-fetched and most-stale persons go first.
+function _runStartupRefresh() {
+  const now = Date.now();
+  const queue = persons
+    .filter(p => {
+      if (p.loading || p.backgroundRefreshing) return false;
+      if (!p.lastUpdated) return true;
+      const age = now - new Date(p.lastUpdated).getTime();
+      return isNaN(age) || age >= FEED_TTL_MS;
+    })
+    .sort((a, b) => {
+      const aAge = a.lastUpdated ? now - new Date(a.lastUpdated).getTime() : Infinity;
+      const bAge = b.lastUpdated ? now - new Date(b.lastUpdated).getTime() : Infinity;
+      return bAge - aAge; // most stale first
+    });
+
+  if (!queue.length) return;
+
+  let idx = 0;
+
+  async function worker() {
+    while (idx < queue.length) {
+      const person = queue[idx++];
+      if (person.loading || person.backgroundRefreshing) continue;
+
+      if (!person.lastUpdated) {
+        person.loading = true;
+        renderPersonCard(person, false);
+        await fetchPerson(person).catch(() => {});
+        // _fetchPersonCore clears person.loading
+      } else {
+        person.backgroundRefreshing = true;
+        renderPersonCard(person, false);
+        await fetchPerson(person).catch(() => {});
+        person.backgroundRefreshing = false;
+        renderPersonCard(person, false);
+      }
+    }
+  }
+
+  const n = Math.min(STARTUP_CONCURRENCY, queue.length);
+  for (let i = 0; i < n; i++) worker();
 }
 
 // ── RSS FEED DISCOVERY HELPERS ──
@@ -8329,11 +8376,9 @@ _checkBackend().then(_runMigrations);  // detect backend, then run one-time loca
 renderAllCards();
 renderTagFilterRow();
 updateStatus();
-// Stale-while-revalidate: check each person after UI is rendered.
-// 600ms stagger avoids hammering CORS proxies simultaneously on load.
-persons.forEach((person, i) => {
-  setTimeout(() => ensureFresh(person), i * 600)
-})
+// Stale-while-revalidate: refresh stale persons after UI is rendered.
+// Concurrency-limited to STARTUP_CONCURRENCY simultaneous fetches.
+setTimeout(_runStartupRefresh, 500);
 </script>
 </body>
 </html>
