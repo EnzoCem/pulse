@@ -1583,7 +1583,12 @@
   <div class="tag-filter-row" id="tagFilterRow"></div>
 
   <!-- Person search row — filters the people grid; hidden in non-people views -->
-  <div id="personSearchRow" style="display:flex;align-items:center;justify-content:flex-end;padding:0 16px 8px;gap:8px">
+  <div id="personSearchRow" style="display:flex;align-items:center;justify-content:space-between;padding:0 16px 8px;gap:8px">
+    <div id="typeFilterToggle" style="display:flex;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+      <button id="tf-both"   onclick="setTypeFilter('both')"   style="font-family:'JetBrains Mono',monospace;font-size:10px;padding:4px 12px;background:var(--accent);color:#111;border:none;cursor:pointer;font-weight:600">Both</button>
+      <button id="tf-person" onclick="setTypeFilter('person')" style="font-family:'JetBrains Mono',monospace;font-size:10px;padding:4px 12px;background:none;color:var(--muted);border:none;border-left:1px solid var(--border);cursor:pointer">People</button>
+      <button id="tf-source" onclick="setTypeFilter('source')" style="font-family:'JetBrains Mono',monospace;font-size:10px;padding:4px 12px;background:none;color:var(--muted);border:none;border-left:1px solid var(--border);cursor:pointer">Sources</button>
+    </div>
     <div style="position:relative">
       <input id="personSearchInput" type="text"
         style="background:var(--surface);border:1px solid var(--border);border-radius:20px;
@@ -1937,7 +1942,8 @@ const _dbClient = {
 // ── STATE ──
 let persons      = [];
 let allEntries    = [];
-let currentFilter = 'all';
+let currentFilter    = 'all';
+let currentTypeFilter = 'both'; // 'both' | 'person' | 'source'
 let currentView   = 'people';
 let activeTag     = null;
 let _formTags     = [];
@@ -4021,6 +4027,20 @@ function deletePerson(id) {
   saveState(); updateStatus(); rebuildAllEntries();
 }
 
+// ── TYPE FILTER (Person / Source / Both) ──
+function setTypeFilter(t) {
+  currentTypeFilter = t;
+  ['both','person','source'].forEach(k => {
+    const btn = document.getElementById('tf-' + k);
+    if (!btn) return;
+    const active = k === t;
+    btn.style.background = active ? 'var(--accent)' : 'none';
+    btn.style.color      = active ? '#111' : 'var(--muted)';
+    btn.style.fontWeight = active ? '600' : '400';
+  });
+  renderAllCards();
+}
+
 // ── FILTER ──
 function setFilter(f) {
   currentFilter = f;
@@ -4036,8 +4056,13 @@ function renderAllCards() {
   const empty = document.getElementById('emptyState');
   grid.innerHTML = '';
 
-  let visible = activeTag
-    ? persons.map(p => {
+  // Type filter — Person / Source / Both
+  let visible = currentTypeFilter !== 'both'
+    ? persons.filter(p => (p.type || 'person') === currentTypeFilter)
+    : persons;
+
+  visible = activeTag
+    ? visible.map(p => {
         if ((p.tags||[]).includes(activeTag)) return p;
         // Also match persons whose entries carry the active tag
         const taggedEntries = (p.entries||[]).filter(e => (entryTags[e.id]||[]).includes(activeTag));
