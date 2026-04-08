@@ -1945,7 +1945,7 @@ let allEntries    = [];
 let currentFilter    = 'all';
 let currentTypeFilter = 'both'; // 'both' | 'person' | 'source'
 let currentView   = 'people';
-let activeTag     = null;
+let activeTags    = new Set(); // multi-select AND filter
 let _formTags     = [];
 let entryTags     = {};   // { entryId: string[] } — persisted separately so tags survive re-fetches
 let entryNotes    = {};   // { entryId: string }   — free-text notes per episode
@@ -2095,22 +2095,28 @@ function renderTagFilterRow() {
   const entryTagSet  = new Set(Object.values(entryTags).flat());
   const allTags = [...new Set([...personTagSet, ...entryTagSet])].sort();
   if (allTags.length === 0) { row.innerHTML = ''; return; }
-  row.innerHTML = '<span class="tag-filter-label">Topics:</span>' + allTags.map(tag => {
+  const andLabel = activeTags.size > 1
+    ? `<span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin:0 4px">AND</span>`
+    : '';
+  row.innerHTML = '<span class="tag-filter-label">Topics:</span>' + allTags.map((tag, i) => {
     const c  = tagColor(tag);
-    const on = activeTag === tag;
-    // × clears the active filter when chip is active; removes globally when inactive
-    const xTitle   = on ? 'Clear filter' : 'Remove tag from all people';
-    const xHandler = on ? `setTagFilter(null)` : `removeGlobalTag('${escHtml(tag)}')`;
-    return `<span class="tag-chip${on?' active':''}"
+    const on = activeTags.has(tag);
+    // × removes from active set when active; removes globally when inactive
+    const xTitle   = on ? 'Remove from filter' : 'Remove tag from all people';
+    const xHandler = on ? `setTagFilter('${escHtml(tag)}')` : `removeGlobalTag('${escHtml(tag)}')`;
+    const sep = (on && i > 0 && activeTags.has(allTags[i-1])) ? andLabel : '';
+    return `${sep}<span class="tag-chip${on?' active':''}"
       style="background:${on ? c : c+'22'};color:${on ? '#111' : c};display:inline-flex;align-items:center;gap:4px">
-      <span onclick="setTagFilter('${escHtml(tag)}')" style="cursor:pointer" title="${on ? 'Clear filter' : 'Filter by '+tag}">${escHtml(tag)}</span>
+      <span onclick="setTagFilter('${escHtml(tag)}')" style="cursor:pointer" title="${on ? 'Remove from filter' : 'Add to filter'}">${escHtml(tag)}</span>
       <button class="tag-remove" type="button" title="Rename tag" style="font-size:10px;opacity:0.7" onclick="renameGlobalTag('${escHtml(tag)}')">✎</button>
       <button class="tag-remove" type="button" title="${xTitle}" onclick="${xHandler}">×</button>
     </span>`;
   }).join('');
 }
 function setTagFilter(tag) {
-  activeTag = (tag === null || activeTag === tag) ? null : tag;
+  if (tag === null) { activeTags.clear(); }
+  else if (activeTags.has(tag)) { activeTags.delete(tag); }
+  else { activeTags.add(tag); }
   renderTagFilterRow();
   renderAllCards();
   if (currentView === 'timeline') renderTimeline();
@@ -2122,7 +2128,7 @@ function renameGlobalTag(oldTag) {
   persons.forEach(p => {
     if (p.tags) p.tags = p.tags.map(t => t === oldTag ? n : t);
   });
-  if (activeTag === oldTag) activeTag = n;
+  if (activeTags.has(oldTag)) { activeTags.delete(oldTag); activeTags.add(n); }
   saveState();
   renderTagFilterRow();
   renderAllCards();
@@ -2135,7 +2141,7 @@ function removeGlobalTag(tag) {
     entryTags[id] = entryTags[id].filter(t => t !== tag);
     if (entryTags[id].length === 0) delete entryTags[id];
   });
-  if (activeTag === tag) activeTag = null;
+  activeTags.delete(tag);
   saveState();
   renderTagFilterRow();
   renderAllCards();
@@ -4067,11 +4073,13 @@ function renderAllCards() {
     ? persons.filter(p => (p.type || 'person') === currentTypeFilter)
     : persons;
 
-  visible = activeTag
+  visible = activeTags.size > 0
     ? visible.map(p => {
-        if ((p.tags||[]).includes(activeTag)) return p;
-        // Also match persons whose entries carry the active tag
-        const taggedEntries = (p.entries||[]).filter(e => (entryTags[e.id]||[]).includes(activeTag));
+        const pTags = p.tags || [];
+        if ([...activeTags].every(t => pTags.includes(t))) return p;
+        // Also match persons whose entries carry the missing tags
+        const taggedEntries = (p.entries||[]).filter(e =>
+          [...activeTags].every(t => pTags.includes(t) || (entryTags[e.id]||[]).includes(t)));
         if (taggedEntries.length) return { ...p, _tagEntries: taggedEntries };
         return null;
       }).filter(Boolean)
@@ -4260,9 +4268,10 @@ function renderTimeline() {
   } else if (currentFilter !== 'all') {
     entries = entries.filter(e => !e.isAppearance && e.platform === currentFilter);
   }
-  if (activeTag) entries = entries.filter(e =>
-    (persons.find(p => p.id === e.personId)?.tags||[]).includes(activeTag) ||
-    (entryTags[e.id]||[]).includes(activeTag));
+  if (activeTags.size > 0) entries = entries.filter(e => {
+    const pTags = persons.find(p => p.id === e.personId)?.tags || [];
+    return [...activeTags].every(t => pTags.includes(t) || (entryTags[e.id]||[]).includes(t));
+  });
   if (searchQuery) {
     const q = searchQuery;
     entries = entries.filter(e =>
