@@ -2868,7 +2868,21 @@ function renderPersonDetail() {
                value="${escHtml(val)}" placeholder="${f.ph}">
         ${testBtn}
       </div>`;
-  }).join('');
+  }).join('') + `
+      <div class="detail-feed-row" style="grid-template-columns:10px 18px 100px 1fr auto">
+        <span class="feed-dot dot-none"></span>
+        <span></span>
+        <label class="detail-feed-lbl" for="df-transcripts">📋 Transcripts</label>
+        <input class="detail-input" id="df-transcripts" type="text"
+               value="${escHtml(person.transcriptsUrl||'')}" placeholder="https://lexfridman.com/transcripts">
+        ${person.transcriptsUrl
+          ? `<a href="${escHtml(person.transcriptsUrl)}" target="_blank" rel="noopener"
+               style="font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 8px;
+                      background:none;border:1px solid var(--border);border-radius:4px;
+                      color:var(--muted);text-decoration:none;white-space:nowrap;transition:color .2s"
+               title="Open transcripts page">Open</a>`
+          : ''}
+      </div>`;
 
   // Entry list with current detail filter
   let entries = _detailFilter === 'appearance'
@@ -2959,13 +2973,6 @@ function renderPersonDetail() {
           <div class="detail-wiki-extract" title="Click to expand"
                onclick="this.classList.toggle('expanded')">${escHtml(person.wikiExtract)}</div>
         </div>` : ''}
-        <div class="detail-field">
-          <div class="detail-lbl">Transcripts URL
-            ${person.transcriptsUrl ? `<a href="${escHtml(person.transcriptsUrl)}" target="_blank" rel="noopener"
-              style="color:var(--accent);font-size:10px;margin-left:6px;text-decoration:none" title="Open transcripts page">📋</a>` : ''}
-          </div>
-          <input class="detail-input" id="df-transcripts" value="${escHtml(person.transcriptsUrl||'')}" placeholder="https://lexfridman.com/transcripts">
-        </div>
         <div class="detail-field">
           <div class="detail-lbl">Avatar URL</div>
           <input class="detail-input" id="df-avatar" value="${escHtml(person.avatar||'')}" placeholder="https://…"
