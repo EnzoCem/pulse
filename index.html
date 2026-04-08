@@ -4069,7 +4069,7 @@ function renderAllCards() {
         if (taggedEntries.length) return { ...p, _tagEntries: taggedEntries };
         return null;
       }).filter(Boolean)
-    : persons;
+    : visible;
 
   // Filter grid by person name / description / tags
   if (personQuery) {
